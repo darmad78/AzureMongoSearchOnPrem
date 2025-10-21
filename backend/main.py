@@ -147,11 +147,15 @@ async def create_document_from_audio(
         # Transcribe audio with optional language
         transcribe_options = {}
         if language:
+            print(f"Using user-specified language: {language}")
             transcribe_options['language'] = language
+        else:
+            print("Auto-detecting language")
         
         transcription_result = whisper_model.transcribe(temp_path, **transcribe_options)
         transcribed_text = transcription_result["text"]
         detected_language = transcription_result.get("language", language or "unknown")
+        print(f"Transcription complete. Detected language: {detected_language}, Text preview: {transcribed_text[:100]}")
         
         # Clean up temp file
         os.unlink(temp_path)
