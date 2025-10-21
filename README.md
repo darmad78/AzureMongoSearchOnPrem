@@ -71,12 +71,64 @@ cd frontend && npm install && npm run dev
 
 ## 📋 Prerequisites
 
+### Docker Compose (Development)
+- **Docker**: 20.10+ with Docker Compose
+- **Minimum Hardware**: 4 CPU cores, 8GB RAM, 10GB disk
+- **Recommended Hardware**: 8 CPU cores, 16GB RAM, 20GB disk
+
+### Kubernetes (Production)
 - **Kubernetes Cluster**: minikube, kind, Docker Desktop, or microk8s
 - **kubectl**: Kubernetes command-line tool
 - **Helm**: Package manager for Kubernetes
-- **Docker**: Container runtime
-- **Python 3.8+**: For FastAPI backend
-- **Node.js 16+**: For React frontend
+- **Minimum Hardware**: 10 CPU cores, 16GB RAM, 50GB disk
+- **Recommended Hardware**: 16 CPU cores, 32GB RAM, 100GB disk
+
+### Why Does Kubernetes Need More Resources?
+
+**Docker Compose (4 CPUs)** runs:
+- 1x MongoDB instance (single node)
+- 1x Ollama (LLM)
+- 1x Backend
+- 1x Frontend
+
+**Kubernetes (10+ CPUs)** runs a full enterprise stack:
+- **3x MongoDB Enterprise pods** (high availability replica set)
+  - Each pod: 1 CPU, 1GB RAM
+  - Total: 3 CPUs, 3GB RAM
+- **1x MongoDB Search node** (dedicated mongot process for vector search)
+  - 2 CPUs, 3GB RAM
+  - Native $vectorSearch operations
+- **1x Ops Manager** (monitoring and automation)
+  - 1 CPU, 2GB RAM
+  - Web UI, backup management, alerts
+- **1x Kubernetes Operator** (automation)
+  - 0.5 CPU, 200MB RAM
+  - Manages MongoDB resources
+- **Kubernetes overhead** (control plane, networking, storage)
+  - ~2-3 CPUs
+  - etcd, API server, scheduler, controllers
+
+**Total Kubernetes: 10+ CPUs, 15GB RAM**
+
+**Key Differences:**
+
+| Feature | Docker Compose | Kubernetes |
+|---------|----------------|------------|
+| **MongoDB Nodes** | 1 (single) | 3 (replica set) |
+| **High Availability** | ❌ No | ✅ Yes |
+| **Search Nodes** | ❌ No (embedded) | ✅ Yes (dedicated mongot) |
+| **Ops Manager** | ❌ No | ✅ Yes |
+| **Auto Failover** | ❌ No | ✅ Yes |
+| **Production Ready** | ❌ No | ✅ Yes |
+| **CPU Required** | 4 cores | 10+ cores |
+| **Use Case** | Dev/Demo | Production/Enterprise |
+
+**Which Should You Choose?**
+
+- **Docker Compose**: Perfect for demos, development, learning (cheap 4 CPU machines work!)
+- **Kubernetes**: For production, enterprise features, high availability (needs proper hardware)
+
+See [CHEAP_DEPLOYMENT.md](CHEAP_DEPLOYMENT.md) for running on budget 4 CPU machines.
 
 ## 🔧 Configuration
 
