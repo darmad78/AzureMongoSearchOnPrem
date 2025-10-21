@@ -547,6 +547,22 @@ main() {
     echo "╚══════════════════════════════════════════════════════════════╝"
     echo -e "${NC}"
     
+    # Check system requirements first
+    if [ -f "./check-requirements.sh" ]; then
+        log_info "Checking system requirements..."
+        if ./check-requirements.sh kubernetes; then
+            log_success "System requirements check passed"
+        else
+            log_warning "System requirements check completed with warnings"
+            read -p "Continue anyway? (y/N): " -n 1 -r
+            echo
+            if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+                log_error "Deployment cancelled by user"
+                exit 1
+            fi
+        fi
+    fi
+    
     # Initialize
     create_default_config
     load_config
