@@ -437,17 +437,22 @@ EOF
     log_success "MongoDB users created"
 }
 
-# Deploy MongoDB Search
+# Deploy MongoDB Search (mongot nodes for Vector Search)
 deploy_search() {
-    log_step "Deploying MongoDB Search & Vector Search"
+    log_step "Deploying MongoDB Search & Vector Search (mongot nodes)"
     
-    # Create MongoDB Search resource
+    log_info "Creating MongoDBSearch resource with dedicated search nodes..."
+    
+    # Create MongoDB Search resource - deploys mongot processes
+    # This enables native $vectorSearch aggregation pipeline
     kubectl apply --context "${K8S_CTX}" -n "${MDB_NS}" -f - <<EOF
 apiVersion: mongodb.com/v1
 kind: MongoDBSearch
 metadata:
   name: ${MDB_RESOURCE_NAME}
 spec:
+  # MongoDB resource is automatically inferred from matching name
+  # Deploys dedicated mongot (search) nodes
   resourceRequirements:
     limits:
       cpu: "${SEARCH_CPU_LIMIT:-3}"
@@ -457,24 +462,31 @@ spec:
       memory: 3Gi
 EOF
     
-    # Wait for Search to be ready
-    log_info "Waiting for MongoDB Search to be ready..."
+    # Wait for Search nodes to be ready
+    log_info "Waiting for MongoDB Search nodes (mongot) to be ready..."
     kubectl --context "${K8S_CTX}" -n "${MDB_NS}" wait --for=jsonpath='{.status.phase}'=Running "mdbs/${MDB_RESOURCE_NAME}" --timeout=300s
     
-    log_success "MongoDB Search & Vector Search deployed"
+    log_success "MongoDB Search & Vector Search deployed with dedicated mongot nodes"
+    log_info "Vector Search is now available via \$vectorSearch aggregation pipeline"
 }
 
 # Display deployment summary
 show_summary() {
     log_step "Deployment Complete!"
     
-    echo -e "\n${GREEN}🎉 MongoDB Enterprise Advanced with Search is ready!${NC}"
+    echo -e "\n${GREEN}🎉 MongoDB Enterprise Advanced with Vector Search is ready!${NC}"
     echo ""
     echo "📊 Deployment Summary:"
     echo "   Kubernetes Context: $K8S_CTX"
     echo "   Namespace: $MDB_NS"
     echo "   MongoDB Resource: $MDB_RESOURCE_NAME"
     echo "   MongoDB Version: $MDB_VERSION"
+    echo ""
+    echo "🔍 MongoDB Search (Vector Search):"
+    echo "   MongoDBSearch Resource: $MDB_RESOURCE_NAME"
+    echo "   Search Nodes (mongot): Deployed"
+    echo "   Vector Search: ENABLED"
+    echo "   \$vectorSearch: Available in aggregation pipeline"
     echo ""
     echo "🔗 Access Information:"
     echo "   MongoDB Connection:"
@@ -485,14 +497,45 @@ show_summary() {
     echo "   Then open: http://localhost:8080"
     echo ""
     echo "📋 Useful Commands:"
+    echo "   # View all resources"
     echo "   kubectl get pods -n ${MDB_NS}"
     echo "   kubectl get mdb -n ${MDB_NS}"
     echo "   kubectl get mdbs -n ${MDB_NS}"
     echo ""
+    echo "   # View search nodes"
+    echo "   kubectl get pods -n ${MDB_NS} -l app=${MDB_RESOURCE_NAME}-search-svc"
+    echo ""
+    echo "   # Access MongoDB shell"
+    echo "   kubectl exec -it ${MDB_RESOURCE_NAME}-0 -n ${MDB_NS} -- mongosh"
+    echo ""
     echo "🔧 Next Steps:"
-    echo "   1. Update your FastAPI backend connection string"
-    echo "   2. Test the application"
-    echo "   3. Create search indexes"
+    echo "   1. Create Vector Search Index:"
+    echo "      mongosh < scripts/setup-vector-search.js"
+    echo ""
+    echo "   2. Or create via MongoDB shell:"
+    echo "      kubectl exec -it ${MDB_RESOURCE_NAME}-0 -n ${MDB_NS} -- mongosh"
+    echo "      use searchdb"
+    echo "      db.documents.createSearchIndex({"
+    echo "        name: \"vector_index\","
+    echo "        type: \"vectorSearch\","
+    echo "        definition: {"
+    echo "          fields: [{"
+    echo "            type: \"vector\","
+    echo "            path: \"embedding\","
+    echo "            numDimensions: 384,"
+    echo "            similarity: \"cosine\""
+    echo "          }]"
+    echo "        }"
+    echo "      })"
+    echo ""
+    echo "   3. Deploy your application:"
+    echo "      Update backend MONGODB_URL to use the connection string above"
+    echo ""
+    echo "   4. Test Vector Search:"
+    echo "      Upload documents → Generate embeddings → Use \$vectorSearch!"
+    echo ""
+    echo "📖 Documentation:"
+    echo "   See MONGODB_ENTERPRISE_DEMO.md for full demo guide"
 }
 
 # Main deployment function
