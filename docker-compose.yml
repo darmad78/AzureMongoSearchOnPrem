@@ -1,45 +1,78 @@
 version: '3.8'
 
 services:
-  # MongoDB Database
+  # MongoDB Enterprise Advanced
   mongodb:
-    image: mongo:8.2.1
-    container_name: mongodb-search
+    image: mongodb/mongodb-enterprise-server:8.0.3-ubuntu2204
+    container_name: mongodb-enterprise
     ports:
       - "27017:27017"
     environment:
       MONGO_INITDB_ROOT_USERNAME: admin
       MONGO_INITDB_ROOT_PASSWORD: password123
-      MONGO_INITDB_DATABASE: searchdb
     volumes:
       - mongodb_data:/data/db
-      - ./scripts/init-mongo.js:/docker-entrypoint-initdb.d/init-mongo.js:ro
-    command: mongod --replSet rs0
+      - mongodb_config:/data/configdb
+    command: >
+      bash -c "
+        mongod --replSet rs0 --bind_ip_all --auth
+      "
     networks:
       - search-network
     healthcheck:
-      test: mongosh --eval 'db.adminCommand("ping")' --quiet
+      test: mongosh --eval 'db.adminCommand("ping")' --quiet || exit 1
       interval: 10s
       timeout: 5s
-      retries: 5
+      retries: 10
+      start_period: 40s
 
-  # MongoDB ReplicaSet Initialization
+  # MongoDB ReplicaSet and Search Index Initialization
   mongodb-setup:
-    image: mongo:8.2.1
+    image: mongodb/mongodb-enterprise-server:8.0.3-ubuntu2204
     depends_on:
       mongodb:
         condition: service_healthy
     command: >
       bash -c "
-        sleep 5 &&
-        mongosh --host mongodb:27017 -u admin -p password123 --authenticationDatabase admin --eval '
-          rs.initiate({
-            _id: \"rs0\",
-            members: [
-              { _id: 0, host: \"mongodb:27017\" }
+        echo 'Waiting for MongoDB to be ready...' &&
+        sleep 10 &&
+        
+        echo 'Initializing replica set...' &&
+        mongosh --host mongodb:27017 --eval '
+          try {
+            rs.initiate({
+              _id: \"rs0\",
+              members: [
+                { _id: 0, host: \"mongodb:27017\" }
+              ]
+            })
+          } catch(e) {
+            print(\"Replica set already initialized or error:\", e)
+          }
+        ' &&
+        
+        sleep 10 &&
+        
+        echo 'Creating admin user and search database...' &&
+        mongosh --host mongodb:27017 --eval '
+          use admin
+          db.createUser({
+            user: \"admin\",
+            pwd: \"password123\",
+            roles: [
+              { role: \"root\", db: \"admin\" },
+              { role: \"readWriteAnyDatabase\", db: \"admin\" }
             ]
           })
-        ' || true
+        ' || echo 'User already exists' &&
+        
+        echo 'Setting up search database...' &&
+        mongosh --host mongodb:27017 -u admin -p password123 --authenticationDatabase admin --eval '
+          use searchdb
+          db.createCollection(\"documents\")
+        ' &&
+        
+        echo 'MongoDB setup complete!'
       "
     networks:
       - search-network
@@ -128,6 +161,7 @@ services:
 
 volumes:
   mongodb_data:
+  mongodb_config:
   ollama_data:
   whisper_models:
   sentence_transformers_models:
