@@ -158,6 +158,11 @@ async def create_document_from_audio(
         tags_list.append(f"language:{detected_language}")
         tags_list.append("audio-transcription")
         
+        # Map to MongoDB supported languages (or 'none' if unsupported)
+        # MongoDB supported: da, nl, en, fi, fr, de, hu, it, nb, pt, ro, ru, es, sv, tr
+        supported_languages = ['da', 'nl', 'en', 'fi', 'fr', 'de', 'hu', 'it', 'nb', 'pt', 'ro', 'ru', 'es', 'sv', 'tr']
+        mongodb_language = detected_language if detected_language in supported_languages else 'none'
+        
         # Create document
         doc_dict = {
             "title": title,
@@ -165,7 +170,8 @@ async def create_document_from_audio(
             "tags": tags_list,
             "source": "audio",
             "audio_filename": audio.filename,
-            "language": detected_language
+            "detected_language": detected_language,  # Keep original for reference
+            "language": mongodb_language  # Use supported language for MongoDB
         }
         
         # Generate embedding
