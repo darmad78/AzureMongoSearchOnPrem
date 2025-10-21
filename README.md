@@ -15,19 +15,40 @@ A complete full-text search application built with MongoDB Enterprise Advanced 8
 
 ## 🎯 Quick Start
 
-### Option 1: Single Executable Deployment (Recommended)
+### Option 1: Docker Compose (Fastest - 5 minutes)
 
 ```bash
 # Clone the repository
-git clone https://github.com/yourusername/AzureMongoSearchOnPrem.git
+git clone https://github.com/darmad78/AzureMongoSearchOnPrem.git
 cd AzureMongoSearchOnPrem
 
-# Run the single deployment script
-chmod +x deploy.sh
-./deploy.sh
+# Check requirements
+./check-requirements.sh docker
+
+# Deploy everything
+docker-compose up -d
+
+# Access: http://localhost:5173
 ```
 
-### Option 2: Step-by-Step Deployment
+### Option 2: Kubernetes (Full Enterprise - 30 minutes)
+
+```bash
+# Clone the repository
+git clone https://github.com/darmad78/AzureMongoSearchOnPrem.git
+cd AzureMongoSearchOnPrem
+
+# Check requirements
+./check-requirements.sh kubernetes
+
+# Deploy MongoDB Enterprise + Search + Ops Manager
+./deploy.sh
+
+# Verify and setup vector search
+./verify-and-setup.sh
+```
+
+### Option 3: Step-by-Step Deployment
 
 ```bash
 # 1. Install prerequisites (Ubuntu)
@@ -176,6 +197,78 @@ npm run dev
 - Ops Manager monitoring
 - Scalable search nodes
 
+### Cloud Deployments
+
+Deploy to any cloud provider running Ubuntu 22.04:
+
+#### AWS EC2
+```bash
+# Launch: Ubuntu 22.04, t3.xlarge (4 vCPU, 16GB RAM), 50GB disk
+# After instance is running:
+
+ssh -i key.pem ubuntu@ec2-ip
+git clone https://github.com/darmad78/AzureMongoSearchOnPrem.git
+cd AzureMongoSearchOnPrem
+./setup-ubuntu-prerequisites.sh
+
+# Log out and back in, then:
+./check-requirements.sh docker
+docker-compose up -d
+```
+
+#### Google Cloud Platform
+```bash
+# Create VM instance
+gcloud compute instances create mongodb-demo \
+  --image-family=ubuntu-2204-lts \
+  --image-project=ubuntu-os-cloud \
+  --machine-type=n2-standard-4 \
+  --boot-disk-size=50GB
+
+# SSH into instance
+gcloud compute ssh mongodb-demo
+
+# Setup and deploy
+git clone https://github.com/darmad78/AzureMongoSearchOnPrem.git
+cd AzureMongoSearchOnPrem
+./setup-ubuntu-prerequisites.sh
+
+# Log out and back in, then:
+./check-requirements.sh docker
+docker-compose up -d
+```
+
+#### Microsoft Azure
+```bash
+# Create VM instance
+az vm create \
+  --resource-group myResourceGroup \
+  --name mongodb-demo \
+  --image UbuntuLTS \
+  --size Standard_D4s_v3 \
+  --admin-username azureuser \
+  --generate-ssh-keys
+
+# SSH into instance
+ssh azureuser@<vm-public-ip>
+
+# Setup and deploy
+git clone https://github.com/darmad78/AzureMongoSearchOnPrem.git
+cd AzureMongoSearchOnPrem
+./setup-ubuntu-prerequisites.sh
+
+# Log out and back in, then:
+./check-requirements.sh docker
+docker-compose up -d
+```
+
+**Cloud Instance Requirements:**
+- **Minimum**: 4 vCPU, 8GB RAM, 10GB disk (Docker Compose)
+- **Recommended**: 4 vCPU, 16GB RAM, 50GB disk (Docker Compose)
+- **Kubernetes**: 10+ vCPU, 16GB RAM, 50GB disk
+
+**See [UBUNTU_QUICKSTART.md](UBUNTU_QUICKSTART.md) for complete Ubuntu deployment guide.**
+
 ## 📊 Monitoring
 
 ### Ops Manager
@@ -231,9 +324,11 @@ This project is licensed under the Apache 2.0 License - see the [LICENSE](LICENS
 
 ## 📞 Support
 
-- **Issues**: [GitHub Issues](https://github.com/yourusername/AzureMongoSearchOnPrem/issues)
-- **Discussions**: [GitHub Discussions](https://github.com/yourusername/AzureMongoSearchOnPrem/discussions)
+- **Issues**: [GitHub Issues](https://github.com/darmad78/AzureMongoSearchOnPrem/issues)
+- **Discussions**: [GitHub Discussions](https://github.com/darmad78/AzureMongoSearchOnPrem/discussions)
 - **Documentation**: [MongoDB Docs](https://www.mongodb.com/docs/)
+- **Ubuntu Guide**: [UBUNTU_QUICKSTART.md](UBUNTU_QUICKSTART.md)
+- **System Requirements**: [SYSTEM_REQUIREMENTS.md](SYSTEM_REQUIREMENTS.md)
 
 ---
 
