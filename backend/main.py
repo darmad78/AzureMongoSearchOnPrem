@@ -96,6 +96,68 @@ async def transcribe_audio(audio: UploadFile = File(...)):
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Transcription failed: {str(e)}")
 
+@app.post("/documents/from-audio", response_model=DocumentResponse)
+async def create_document_from_audio(
+    audio: UploadFile = File(...),
+    title: Optional[str] = None,
+    tags: Optional[str] = None
+):
+    """Upload audio file, transcribe it, and create a document with embeddings"""
+    try:
+        # Save uploaded file temporarily
+        with tempfile.NamedTemporaryFile(delete=False, suffix=os.path.splitext(audio.filename)[1]) as temp_audio:
+            shutil.copyfileobj(audio.file, temp_audio)
+            temp_path = temp_audio.name
+        
+        # Transcribe audio
+        transcription_result = whisper_model.transcribe(temp_path)
+        transcribed_text = transcription_result["text"]
+        detected_language = transcription_result.get("language", "unknown")
+        
+        # Clean up temp file
+        os.unlink(temp_path)
+        
+        # Use transcribed text as title if not provided
+        if not title:
+            # Use first 50 chars of transcription as title
+            title = transcribed_text[:50] + ("..." if len(transcribed_text) > 50 else "")
+        
+        # Parse tags
+        tags_list = []
+        if tags:
+            tags_list = [tag.strip() for tag in tags.split(',') if tag.strip()]
+        
+        # Add language as a tag
+        tags_list.append(f"language:{detected_language}")
+        tags_list.append("audio-transcription")
+        
+        # Create document
+        doc_dict = {
+            "title": title,
+            "body": transcribed_text,
+            "tags": tags_list,
+            "source": "audio",
+            "audio_filename": audio.filename,
+            "language": detected_language
+        }
+        
+        # Generate embedding
+        text_for_embedding = f"{doc_dict['title']} {doc_dict['body']} {' '.join(doc_dict['tags'])}"
+        embedding = embedding_model.encode(text_for_embedding).tolist()
+        doc_dict['embedding'] = embedding
+        
+        # Insert into MongoDB
+        result = documents.insert_one(doc_dict)
+        
+        return DocumentResponse(
+            id=str(result.inserted_id),
+            title=doc_dict['title'],
+            body=doc_dict['body'],
+            tags=doc_dict['tags']
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Audio document creation failed: {str(e)}")
+
 @app.get("/search/semantic")
 async def semantic_search(q: str, limit: int = 10):
     """Semantic search using embeddings"""

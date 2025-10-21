@@ -12,6 +12,11 @@ function App() {
   const [isRecording, setIsRecording] = useState(false);
   const [isTranscribing, setIsTranscribing] = useState(false);
   const [useSemanticSearch, setUseSemanticSearch] = useState(false);
+  const [audioFile, setAudioFile] = useState(null);
+  const [audioTitle, setAudioTitle] = useState('');
+  const [audioTags, setAudioTags] = useState('');
+  const [isUploadingAudio, setIsUploadingAudio] = useState(false);
+  const [uploadStatus, setUploadStatus] = useState('');
   const mediaRecorderRef = useRef(null);
   const audioChunksRef = useRef([]);
 
@@ -128,6 +133,70 @@ function App() {
     }
   };
 
+  // Handle audio file selection
+  const handleAudioFileChange = (e) => {
+    const file = e.target.files[0];
+    if (file) {
+      // Check if it's an audio file
+      if (file.type.startsWith('audio/')) {
+        setAudioFile(file);
+        setUploadStatus('');
+      } else {
+        alert('Please select a valid audio file');
+        e.target.value = '';
+      }
+    }
+  };
+
+  // Upload audio file and create document
+  const uploadAudioDocument = async (e) => {
+    e.preventDefault();
+    if (!audioFile) {
+      alert('Please select an audio file');
+      return;
+    }
+
+    setIsUploadingAudio(true);
+    setUploadStatus('Uploading and transcribing audio...');
+
+    try {
+      const formData = new FormData();
+      formData.append('audio', audioFile);
+      if (audioTitle) formData.append('title', audioTitle);
+      if (audioTags) formData.append('tags', audioTags);
+
+      const response = await fetch(`${API_URL}/documents/from-audio`, {
+        method: 'POST',
+        body: formData,
+      });
+
+      if (response.ok) {
+        const result = await response.json();
+        setUploadStatus(`✅ Successfully created document: "${result.title}"`);
+        
+        // Reset form
+        setAudioFile(null);
+        setAudioTitle('');
+        setAudioTags('');
+        document.getElementById('audio-file-input').value = '';
+        
+        // Refresh documents list
+        fetchDocuments();
+        
+        // Clear status after 3 seconds
+        setTimeout(() => setUploadStatus(''), 3000);
+      } else {
+        const error = await response.json();
+        setUploadStatus(`❌ Error: ${error.detail}`);
+      }
+    } catch (error) {
+      console.error('Error uploading audio:', error);
+      setUploadStatus('❌ Upload failed. Please try again.');
+    } finally {
+      setIsUploadingAudio(false);
+    }
+  };
+
   useEffect(() => {
     fetchDocuments();
   }, []);
@@ -141,7 +210,7 @@ function App() {
       <main className="main-content">
         {/* Document Submission Form */}
         <section className="form-section">
-          <h2>Add New Document</h2>
+          <h2>📝 Add New Document</h2>
           <form onSubmit={submitDocument} className="document-form">
             <div className="form-group">
               <label>Title:</label>
@@ -172,6 +241,59 @@ function App() {
             </div>
             <button type="submit">Submit Document</button>
           </form>
+        </section>
+
+        {/* Audio Upload Section */}
+        <section className="form-section audio-upload-section">
+          <h2>🎵 Upload Audio File</h2>
+          <p className="section-description">
+            Upload an audio file to automatically transcribe, generate embeddings, and store it as a searchable document
+          </p>
+          <form onSubmit={uploadAudioDocument} className="document-form">
+            <div className="form-group">
+              <label>Audio File:</label>
+              <div className="file-input-wrapper">
+                <input
+                  id="audio-file-input"
+                  type="file"
+                  accept="audio/*"
+                  onChange={handleAudioFileChange}
+                  className="file-input"
+                  required
+                />
+                <label htmlFor="audio-file-input" className="file-input-label">
+                  {audioFile ? `📎 ${audioFile.name}` : '🎤 Choose Audio File'}
+                </label>
+              </div>
+            </div>
+            <div className="form-group">
+              <label>Title (optional):</label>
+              <input
+                type="text"
+                value={audioTitle}
+                onChange={(e) => setAudioTitle(e.target.value)}
+                placeholder="Leave empty to auto-generate from transcription"
+              />
+            </div>
+            <div className="form-group">
+              <label>Tags (optional, comma-separated):</label>
+              <input
+                type="text"
+                value={audioTags}
+                onChange={(e) => setAudioTags(e.target.value)}
+                placeholder="meeting, notes, interview"
+              />
+            </div>
+            <button type="submit" disabled={isUploadingAudio || !audioFile}>
+              {isUploadingAudio ? '⏳ Processing...' : '🚀 Upload & Transcribe'}
+            </button>
+          </form>
+          
+          {uploadStatus && (
+            <div className={`upload-status ${uploadStatus.includes('✅') ? 'success' : 'error'}`}>
+              {uploadStatus}
+            </div>
+          )}
         </section>
 
         {/* Search Section */}
