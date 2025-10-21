@@ -1,6 +1,7 @@
 version: '3.8'
 
 services:
+  # MongoDB Database
   mongodb:
     image: mongo:8.2.1
     container_name: mongodb-search
@@ -16,14 +17,21 @@ services:
     command: mongod --replSet rs0
     networks:
       - search-network
+    healthcheck:
+      test: mongosh --eval 'db.adminCommand("ping")' --quiet
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
+  # MongoDB ReplicaSet Initialization
   mongodb-setup:
     image: mongo:8.2.1
     depends_on:
-      - mongodb
+      mongodb:
+        condition: service_healthy
     command: >
       bash -c "
-        sleep 10 &&
+        sleep 5 &&
         mongosh --host mongodb:27017 -u admin -p password123 --authenticationDatabase admin --eval '
           rs.initiate({
             _id: \"rs0\",
@@ -31,13 +39,98 @@ services:
               { _id: 0, host: \"mongodb:27017\" }
             ]
           })
-        '
+        ' || true
       "
     networks:
       - search-network
 
+  # Ollama - Local LLM Server
+  ollama:
+    image: ollama/ollama:latest
+    container_name: ollama-server
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_data:/root/.ollama
+    networks:
+      - search-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:11434/api/version"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  # Ollama Model Puller - Downloads llama2 on first run
+  ollama-setup:
+    image: ollama/ollama:latest
+    depends_on:
+      ollama:
+        condition: service_healthy
+    command: >
+      bash -c "
+        sleep 5 &&
+        ollama pull llama2 &&
+        echo 'Ollama model llama2 is ready!'
+      "
+    environment:
+      OLLAMA_HOST: http://ollama:11434
+    networks:
+      - search-network
+
+  # Backend - FastAPI with AI models
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: search-backend
+    ports:
+      - "8000:8000"
+    environment:
+      MONGODB_URL: mongodb://admin:password123@mongodb:27017/searchdb?authSource=admin
+      LLM_PROVIDER: ollama
+      OLLAMA_URL: http://ollama:11434
+      OLLAMA_MODEL: llama2
+    volumes:
+      - ./backend:/app
+      - whisper_models:/root/.cache/whisper
+      - sentence_transformers_models:/root/.cache/torch/sentence_transformers
+    depends_on:
+      mongodb:
+        condition: service_healthy
+      ollama:
+        condition: service_healthy
+    networks:
+      - search-network
+    restart: unless-stopped
+    command: uvicorn main:app --host 0.0.0.0 --port 8000 --reload
+
+  # Frontend - React with Vite
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: search-frontend
+    ports:
+      - "5173:5173"
+    environment:
+      VITE_API_URL: http://localhost:8000
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+    depends_on:
+      - backend
+    networks:
+      - search-network
+    restart: unless-stopped
+    stdin_open: true
+    tty: true
+
 volumes:
   mongodb_data:
+  ollama_data:
+  whisper_models:
+  sentence_transformers_models:
 
 networks:
   search-network:
