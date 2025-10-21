@@ -24,6 +24,21 @@ function App() {
   const mediaRecorderRef = useRef(null);
   const audioChunksRef = useRef([]);
   const chatEndRef = useRef(null);
+  
+  // Collapsible sections state
+  const [expandedSections, setExpandedSections] = useState({
+    addDocument: false,
+    search: true,
+    chat: false,
+    documents: false
+  });
+  
+  const toggleSection = (section) => {
+    setExpandedSections(prev => ({
+      ...prev,
+      [section]: !prev[section]
+    }));
+  };
 
   // Fetch all documents
   const fetchDocuments = async () => {
@@ -276,42 +291,7 @@ function App() {
       </header>
 
       <main className="main-content">
-        {/* Document Submission Form */}
-        <section className="form-section">
-          <h2>📝 Add New Document</h2>
-          <form onSubmit={submitDocument} className="document-form">
-            <div className="form-group">
-              <label>Title:</label>
-              <input
-                type="text"
-                value={newDoc.title}
-                onChange={(e) => setNewDoc({...newDoc, title: e.target.value})}
-                required
-              />
-            </div>
-            <div className="form-group">
-              <label>Body:</label>
-              <textarea
-                value={newDoc.body}
-                onChange={(e) => setNewDoc({...newDoc, body: e.target.value})}
-                required
-                rows="4"
-              />
-            </div>
-            <div className="form-group">
-              <label>Tags (comma-separated):</label>
-              <input
-                type="text"
-                value={newDoc.tags}
-                onChange={(e) => setNewDoc({...newDoc, tags: e.target.value})}
-                placeholder="tag1, tag2, tag3"
-              />
-            </div>
-            <button type="submit">Submit Document</button>
-          </form>
-        </section>
-
-        {/* Audio Upload Section */}
+        {/* Audio Upload Section - Always visible at top */}
         <section className="form-section audio-upload-section">
           <h2>🎵 Upload Audio File</h2>
           <p className="section-description">
@@ -397,10 +377,57 @@ function App() {
           )}
         </section>
 
-        {/* Search Section */}
-        <section className="search-section">
-          <h2>🔍 Search Documents</h2>
+        {/* Add Text Document Section - Collapsible */}
+        <section className="form-section collapsible-section">
+          <h2 className="collapsible-header" onClick={() => toggleSection('addDocument')}>
+            <span className="expand-icon">{expandedSections.addDocument ? '▼' : '▶'}</span>
+            📝 Add Text Document
+          </h2>
+          {expandedSections.addDocument && (
+            <div className="collapsible-content">
+              <form onSubmit={submitDocument} className="document-form">
+                <div className="form-group">
+                  <label>Title:</label>
+                  <input
+                    type="text"
+                    value={newDoc.title}
+                    onChange={(e) => setNewDoc({...newDoc, title: e.target.value})}
+                    required
+                  />
+                </div>
+                <div className="form-group">
+                  <label>Body:</label>
+                  <textarea
+                    value={newDoc.body}
+                    onChange={(e) => setNewDoc({...newDoc, body: e.target.value})}
+                    required
+                    rows="4"
+                  />
+                </div>
+                <div className="form-group">
+                  <label>Tags (comma-separated):</label>
+                  <input
+                    type="text"
+                    value={newDoc.tags}
+                    onChange={(e) => setNewDoc({...newDoc, tags: e.target.value})}
+                    placeholder="tag1, tag2, tag3"
+                  />
+                </div>
+                <button type="submit">Submit Document</button>
+              </form>
+            </div>
+          )}
+        </section>
+
+        {/* Search Section - Collapsible */}
+        <section className="search-section collapsible-section">
+          <h2 className="collapsible-header" onClick={() => toggleSection('search')}>
+            <span className="expand-icon">{expandedSections.search ? '▼' : '▶'}</span>
+            🔍 Search Documents
+          </h2>
           
+          {expandedSections.search && (
+          <div className="collapsible-content">
           <div className="search-options">
             <label className="toggle-switch">
               <input
@@ -453,11 +480,18 @@ function App() {
               🔴 Recording... Click stop when done
             </div>
           )}
+          </div>
+          )}
         </section>
 
-        {/* RAG Chat Section */}
-        <section className="chat-section">
-          <h2>💬 Ask Questions About Your Documents</h2>
+        {/* RAG Chat Section - Collapsible */}
+        <section className="chat-section collapsible-section">
+          <h2 className="collapsible-header" onClick={() => toggleSection('chat')}>
+            <span className="expand-icon">{expandedSections.chat ? '▼' : '▶'}</span>
+            💬 Ask AI Questions
+          </h2>
+          {expandedSections.chat && (
+          <div className="collapsible-content">
           <p className="section-description">
             Use AI to ask questions and get answers based on your stored documents (RAG - Retrieval-Augmented Generation)
           </p>
@@ -523,13 +557,21 @@ function App() {
               </button>
             </form>
           </div>
+          </div>
+          )}
         </section>
 
-        {/* Results Section */}
-        <section className="results-section">
+        {/* All Documents Section - Collapsible */}
+        <section className="results-section collapsible-section">
+          <h2 className="collapsible-header" onClick={() => toggleSection('documents')}>
+            <span className="expand-icon">{expandedSections.documents ? '▼' : '▶'}</span>
+            📚 {searchResults.length > 0 ? `Search Results (${searchResults.length})` : `All Documents (${documents.length})`}
+          </h2>
+          {expandedSections.documents && (
+          <div className="collapsible-content">
           {searchResults.length > 0 ? (
             <div>
-              <h2>Search Results for "{searchQuery}"</h2>
+              <h3>Search Results for "{searchQuery}"</h3>
               {searchResults.map((doc, index) => (
                 <div key={doc.id} className="document-card">
                   <h3>{doc.title}</h3>
@@ -544,7 +586,7 @@ function App() {
             </div>
           ) : (
             <div>
-              <h2>All Documents</h2>
+              <h3>All Documents</h3>
               {documents.map((doc) => (
                 <div key={doc.id} className="document-card">
                   <h3>{doc.title}</h3>
@@ -557,6 +599,8 @@ function App() {
                 </div>
               ))}
             </div>
+          )}
+          </div>
           )}
         </section>
       </main>
