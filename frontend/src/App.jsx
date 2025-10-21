@@ -17,8 +17,12 @@ function App() {
   const [audioTags, setAudioTags] = useState('');
   const [isUploadingAudio, setIsUploadingAudio] = useState(false);
   const [uploadStatus, setUploadStatus] = useState('');
+  const [chatQuestion, setChatQuestion] = useState('');
+  const [chatHistory, setChatHistory] = useState([]);
+  const [isAsking, setIsAsking] = useState(false);
   const mediaRecorderRef = useRef(null);
   const audioChunksRef = useRef([]);
+  const chatEndRef = useRef(null);
 
   // Fetch all documents
   const fetchDocuments = async () => {
@@ -197,6 +201,67 @@ function App() {
     }
   };
 
+  // Ask question using RAG
+  const askQuestion = async (e) => {
+    e.preventDefault();
+    if (!chatQuestion.trim()) return;
+
+    const userQuestion = chatQuestion;
+    setChatQuestion('');
+    setIsAsking(true);
+
+    // Add user question to chat history
+    const userMessage = { type: 'user', content: userQuestion };
+    setChatHistory(prev => [...prev, userMessage]);
+
+    try {
+      const response = await fetch(`${API_URL}/chat`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          question: userQuestion,
+          max_context_docs: 3
+        }),
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        
+        // Add AI response to chat history
+        const aiMessage = {
+          type: 'ai',
+          content: data.answer,
+          sources: data.sources,
+          model: data.model_used
+        };
+        setChatHistory(prev => [...prev, aiMessage]);
+      } else {
+        const error = await response.json();
+        const errorMessage = {
+          type: 'error',
+          content: `Error: ${error.detail || 'Failed to get answer'}`
+        };
+        setChatHistory(prev => [...prev, errorMessage]);
+      }
+    } catch (error) {
+      console.error('Error asking question:', error);
+      const errorMessage = {
+        type: 'error',
+        content: 'Failed to connect to the server. Please try again.'
+      };
+      setChatHistory(prev => [...prev, errorMessage]);
+    } finally {
+      setIsAsking(false);
+    }
+  };
+
+  // Scroll to bottom of chat
+  useEffect(() => {
+    chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [chatHistory]);
+
   useEffect(() => {
     fetchDocuments();
   }, []);
@@ -352,6 +417,76 @@ function App() {
               🔴 Recording... Click stop when done
             </div>
           )}
+        </section>
+
+        {/* RAG Chat Section */}
+        <section className="chat-section">
+          <h2>💬 Ask Questions About Your Documents</h2>
+          <p className="section-description">
+            Use AI to ask questions and get answers based on your stored documents (RAG - Retrieval-Augmented Generation)
+          </p>
+          
+          <div className="chat-container">
+            <div className="chat-messages">
+              {chatHistory.length === 0 ? (
+                <div className="chat-welcome">
+                  <div className="welcome-icon">🤖</div>
+                  <h3>Ask me anything about your documents!</h3>
+                  <p>I'll search through your documents and provide answers based on the content.</p>
+                  <div className="example-questions">
+                    <p><strong>Try asking:</strong></p>
+                    <ul>
+                      <li>"What are the main topics discussed?"</li>
+                      <li>"Summarize the key points"</li>
+                      <li>"What did we say about [topic]?"</li>
+                    </ul>
+                  </div>
+                </div>
+              ) : (
+                <>
+                  {chatHistory.map((message, index) => (
+                    <div key={index} className={`chat-message ${message.type}`}>
+                      <div className="message-icon">
+                        {message.type === 'user' ? '👤' : message.type === 'ai' ? '🤖' : '⚠️'}
+                      </div>
+                      <div className="message-content">
+                        <div className="message-text">{message.content}</div>
+                        {message.sources && message.sources.length > 0 && (
+                          <div className="message-sources">
+                            <div className="sources-header">📚 Sources ({message.sources.length}):</div>
+                            {message.sources.map((source, idx) => (
+                              <div key={idx} className="source-item">
+                                <strong>{source.title}</strong>
+                                <p>{source.body.substring(0, 100)}...</p>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                        {message.model && (
+                          <div className="message-model">Model: {message.model}</div>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                  <div ref={chatEndRef} />
+                </>
+              )}
+            </div>
+            
+            <form onSubmit={askQuestion} className="chat-input-form">
+              <input
+                type="text"
+                value={chatQuestion}
+                onChange={(e) => setChatQuestion(e.target.value)}
+                placeholder="Ask a question about your documents..."
+                className="chat-input"
+                disabled={isAsking}
+              />
+              <button type="submit" disabled={isAsking || !chatQuestion.trim()} className="chat-send-button">
+                {isAsking ? '⏳' : '📤'} {isAsking ? 'Thinking...' : 'Ask'}
+              </button>
+            </form>
+          </div>
         </section>
 
         {/* Results Section */}

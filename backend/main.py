@@ -9,6 +9,9 @@ from sentence_transformers import SentenceTransformer
 import numpy as np
 import tempfile
 import shutil
+from openai import OpenAI
+import requests
+import json
 
 app = FastAPI(title="Document Search API", version="1.0.0")
 
@@ -26,6 +29,20 @@ print("Loading Whisper model...")
 whisper_model = whisper.load_model("base")
 print("Loading embedding model...")
 embedding_model = SentenceTransformer('all-MiniLM-L6-v2')
+
+# LLM Configuration
+LLM_PROVIDER = os.getenv("LLM_PROVIDER", "ollama")  # "openai" or "ollama"
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
+OLLAMA_URL = os.getenv("OLLAMA_URL", "http://localhost:11434")
+OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "llama2")
+
+# Initialize OpenAI client if using OpenAI
+openai_client = None
+if LLM_PROVIDER == "openai" and OPENAI_API_KEY:
+    openai_client = OpenAI(api_key=OPENAI_API_KEY)
+    print("OpenAI client initialized")
+elif LLM_PROVIDER == "ollama":
+    print(f"Using Ollama at {OLLAMA_URL} with model {OLLAMA_MODEL}")
 
 # MongoDB connection
 MONGODB_URL = os.getenv("MONGODB_URL", "mongodb://admin:password123@localhost:27017/searchdb?authSource=admin")
@@ -55,6 +72,16 @@ class SearchResponse(BaseModel):
     query: str
     results: List[DocumentResponse]
     total: int
+
+class ChatRequest(BaseModel):
+    question: str
+    max_context_docs: Optional[int] = 3
+
+class ChatResponse(BaseModel):
+    question: str
+    answer: str
+    sources: List[DocumentResponse]
+    model_used: str
 
 @app.get("/")
 async def root():
@@ -223,6 +250,122 @@ async def search_documents(q: str):
         ))
     
     return SearchResponse(query=q, results=results, total=len(results))
+
+# Helper function to call LLM
+def call_llm(prompt: str, context: str) -> str:
+    """Call LLM with prompt and context"""
+    if LLM_PROVIDER == "openai" and openai_client:
+        # OpenAI API call
+        try:
+            response = openai_client.chat.completions.create(
+                model="gpt-3.5-turbo",
+                messages=[
+                    {"role": "system", "content": "You are a helpful assistant that answers questions based on the provided context. If the answer is not in the context, say so."},
+                    {"role": "user", "content": f"Context:\n{context}\n\nQuestion: {prompt}\n\nAnswer:"}
+                ],
+                temperature=0.7,
+                max_tokens=500
+            )
+            return response.choices[0].message.content
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"OpenAI API error: {str(e)}")
+    
+    elif LLM_PROVIDER == "ollama":
+        # Ollama API call
+        try:
+            response = requests.post(
+                f"{OLLAMA_URL}/api/generate",
+                json={
+                    "model": OLLAMA_MODEL,
+                    "prompt": f"""You are a helpful assistant. Answer the question based on the context provided.
+
+Context:
+{context}
+
+Question: {prompt}
+
+Answer:""",
+                    "stream": False,
+                    "options": {
+                        "temperature": 0.7,
+                        "num_predict": 500
+                    }
+                },
+                timeout=60
+            )
+            response.raise_for_status()
+            return response.json()["response"]
+        except requests.exceptions.RequestException as e:
+            raise HTTPException(
+                status_code=500, 
+                detail=f"Ollama error: {str(e)}. Make sure Ollama is running at {OLLAMA_URL}"
+            )
+    else:
+        raise HTTPException(
+            status_code=500, 
+            detail="No LLM configured. Set OPENAI_API_KEY or ensure Ollama is running."
+        )
+
+@app.post("/chat", response_model=ChatResponse)
+async def chat_with_documents(chat_request: ChatRequest):
+    """RAG endpoint: Ask questions about your documents"""
+    question = chat_request.question
+    max_docs = chat_request.max_context_docs
+    
+    if not question.strip():
+        raise HTTPException(status_code=400, detail="Question is required")
+    
+    # Step 1: Retrieve relevant documents using semantic search
+    query_embedding = embedding_model.encode(question).tolist()
+    all_docs = list(documents.find({"embedding": {"$exists": True}}))
+    
+    if not all_docs:
+        return ChatResponse(
+            question=question,
+            answer="I don't have any documents to answer your question. Please upload some documents first.",
+            sources=[],
+            model_used=f"{LLM_PROVIDER}: {OLLAMA_MODEL if LLM_PROVIDER == 'ollama' else 'gpt-3.5-turbo'}"
+        )
+    
+    # Calculate similarities
+    results_with_scores = []
+    for doc in all_docs:
+        if "embedding" in doc:
+            similarity = np.dot(query_embedding, doc["embedding"]) / (
+                np.linalg.norm(query_embedding) * np.linalg.norm(doc["embedding"])
+            )
+            results_with_scores.append((doc, similarity))
+    
+    # Sort and get top documents
+    results_with_scores.sort(key=lambda x: x[1], reverse=True)
+    top_docs = results_with_scores[:max_docs]
+    
+    # Step 2: Build context from retrieved documents
+    context_parts = []
+    sources = []
+    for idx, (doc, score) in enumerate(top_docs, 1):
+        context_parts.append(f"Document {idx} (Title: {doc['title']}):\n{doc['body']}\n")
+        sources.append(DocumentResponse(
+            id=str(doc["_id"]),
+            title=doc["title"],
+            body=doc["body"],
+            tags=doc["tags"]
+        ))
+    
+    context = "\n".join(context_parts)
+    
+    # Step 3: Generate answer using LLM
+    answer = call_llm(question, context)
+    
+    # Step 4: Return response
+    model_name = f"{LLM_PROVIDER}: {OLLAMA_MODEL if LLM_PROVIDER == 'ollama' else 'gpt-3.5-turbo'}"
+    
+    return ChatResponse(
+        question=question,
+        answer=answer,
+        sources=sources,
+        model_used=model_name
+    )
 
 if __name__ == "__main__":
     import uvicorn
