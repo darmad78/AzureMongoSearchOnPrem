@@ -1,0 +1,30 @@
+{
+  "environment": {
+    "os": "auto",
+    "k8s_context": "auto",
+    "mongodb_namespace": "mongodb",
+    "mongodb_resource_name": "mdb-rs",
+    "mongodb_version": "8.2.1-ent"
+  },
+  "passwords": {
+    "admin_password": "CHANGE-ME-admin-password-123",
+    "user_password": "CHANGE-ME-user-password-123",
+    "search_sync_password": "CHANGE-ME-search-sync-password-123"
+  },
+  "resources": {
+    "mongodb_cpu_limit": "2",
+    "mongodb_memory_limit": "2Gi",
+    "search_cpu_limit": "3",
+    "search_memory_limit": "5Gi"
+  },
+  "ops_manager": {
+    "enabled": true,
+    "project_name": "search-project"
+  },
+  "advanced": {
+    "replica_set_members": 3,
+    "enable_monitoring": true,
+    "enable_backup": false
+  }
+}
+

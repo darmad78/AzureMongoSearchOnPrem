@@ -1,0 +1,44 @@
+version: '3.8'
+
+services:
+  mongodb:
+    image: mongo:8.2.1
+    container_name: mongodb-search
+    ports:
+      - "27017:27017"
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: admin
+      MONGO_INITDB_ROOT_PASSWORD: password123
+      MONGO_INITDB_DATABASE: searchdb
+    volumes:
+      - mongodb_data:/data/db
+      - ./scripts/init-mongo.js:/docker-entrypoint-initdb.d/init-mongo.js:ro
+    command: mongod --replSet rs0
+    networks:
+      - search-network
+
+  mongodb-setup:
+    image: mongo:8.2.1
+    depends_on:
+      - mongodb
+    command: >
+      bash -c "
+        sleep 10 &&
+        mongosh --host mongodb:27017 -u admin -p password123 --authenticationDatabase admin --eval '
+          rs.initiate({
+            _id: \"rs0\",
+            members: [
+              { _id: 0, host: \"mongodb:27017\" }
+            ]
+          })
+        '
+      "
+    networks:
+      - search-network
+
+volumes:
+  mongodb_data:
+
+networks:
+  search-network:
+    driver: bridge
