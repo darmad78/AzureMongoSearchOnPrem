@@ -291,8 +291,16 @@ async def semantic_search(q: str, limit: int = 10):
         return SearchResponse(query=q, results=top_results, total=len(top_results))
         
     except Exception as e:
-        # Fallback to manual vector search if index doesn't exist
-        print(f"Vector search error: {e}. Falling back to manual search.")
+        # Fallback to manual vector search if $vectorSearch is not available
+        error_msg = str(e)
+        if "SearchNotEnabled" in error_msg or "31082" in error_msg:
+            print("⚠️  Native $vectorSearch not available. To enable:")
+            print("   1. Deploy mongot: ./deploy-search-only.sh")
+            print("   2. Configure MongoDB: Set MONGOT_HOST in docker-compose.override.yml")
+            print("   3. Restart MongoDB: docker compose restart mongodb")
+            print("   Using Python-based similarity search as fallback...")
+        else:
+            print(f"Vector search error: {e}. Using fallback search.")
         
         # Get all documents with embeddings
         all_docs = list(documents.find({"embedding": {"$exists": True}}))

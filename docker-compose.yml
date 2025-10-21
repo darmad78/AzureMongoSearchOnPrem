@@ -1,5 +1,6 @@
 services:
   # MongoDB Enterprise Advanced
+  # Note: For native $vectorSearch, deploy mongot separately using deploy-search-only.sh
   mongodb:
     image: mongodb/mongodb-enterprise-server:8.0.3-ubuntu2204
     container_name: mongodb-enterprise
@@ -8,12 +9,32 @@ services:
     environment:
       MONGO_INITDB_ROOT_USERNAME: admin
       MONGO_INITDB_ROOT_PASSWORD: password123
+      # Optional: Set MONGOT_HOST to enable native $vectorSearch
+      # Format: MONGOT_HOST=<k8s-search-loadbalancer-ip>:27027
+      # After deploying mongot with deploy-search-only.sh, uncomment and set:
+      # MONGOT_HOST: "your-k8s-loadbalancer-ip:27027"
     volumes:
       - mongodb_data:/data/db
       - mongodb_config:/data/configdb
+      - mongodb_keyfile:/data/keyfile
     command: >
       bash -c "
-        mongod --replSet rs0 --bind_ip_all --auth
+        # Generate keyfile if not exists
+        if [ ! -f /data/keyfile/mongodb.key ]; then
+          openssl rand -base64 756 > /data/keyfile/mongodb.key
+          chmod 400 /data/keyfile/mongodb.key
+          chown mongodb:mongodb /data/keyfile/mongodb.key
+        fi
+        
+        # Start MongoDB with optional search parameters
+        SEARCH_PARAMS=\"\"
+        if [ -n \"$${MONGOT_HOST}\" ]; then
+          SEARCH_PARAMS=\"--setParameter searchIndexManagementHostAndPort=$${MONGOT_HOST} --setParameter mongotHost=$${MONGOT_HOST}\"
+        fi
+        
+        mongod --replSet rs0 --bind_ip_all --auth \
+          --keyFile /data/keyfile/mongodb.key \
+          $${SEARCH_PARAMS}
       "
     networks:
       - search-network
@@ -162,6 +183,7 @@ services:
 volumes:
   mongodb_data:
   mongodb_config:
+  mongodb_keyfile:
   ollama_data:
   whisper_models:
   sentence_transformers_models:
