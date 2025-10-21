@@ -1,0 +1,42 @@
+# Optional: Docker Compose override for quick demo deployment
+# Copy this to docker-compose.override.yml and customize for your environment
+
+services:
+  mongodb:
+    # Disable authentication for quick demos (NOT for production!)
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: ""
+      MONGO_INITDB_ROOT_PASSWORD: ""
+    command: mongod --replSet rs0 --bind_ip_all --noauth
+  
+  ollama:
+    # More lenient healthcheck for slower machines
+    healthcheck:
+      test: ["CMD", "ollama", "list"]
+      interval: 30s
+      timeout: 10s
+      retries: 10
+      start_period: 60s
+  
+  backend:
+    # Connect to MongoDB without auth
+    environment:
+      - MONGODB_URL=mongodb://mongodb:27017/searchdb
+    depends_on:
+      mongodb:
+        condition: service_started
+      ollama:
+        condition: service_started
+  
+  ollama-setup:
+    # Disable auto-download, pull manually instead
+    profiles:
+      - disabled
+
+  frontend:
+    # Set to your VM's external IP or domain
+    # For local: http://localhost:8000
+    # For cloud: http://YOUR_VM_IP:8000
+    environment:
+      - VITE_API_URL=http://localhost:8000
+

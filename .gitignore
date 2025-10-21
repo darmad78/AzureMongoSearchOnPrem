@@ -115,3 +115,6 @@ local/
 # Ops Manager data
 ops-manager-data/
 mms-data/
+
+# Deployment-specific overrides
+docker-compose.override.yml
