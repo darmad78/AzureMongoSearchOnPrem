@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
   # MongoDB Enterprise Advanced
   mongodb:
@@ -92,24 +90,26 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
+      start_period: 30s
     restart: unless-stopped
 
   # Ollama Model Puller - Downloads llama2 on first run
+  # Note: This can take 5-10 minutes. You can also pull manually with:
+  # docker compose exec ollama ollama pull llama2
   ollama-setup:
-    image: ollama/ollama:latest
+    image: curlimages/curl:latest
     depends_on:
       ollama:
         condition: service_healthy
     command: >
-      bash -c "
-        sleep 5 &&
-        ollama pull llama2 &&
-        echo 'Ollama model llama2 is ready!'
+      sh -c "
+        echo 'Triggering llama2 model download in background...' &&
+        curl -X POST http://ollama:11434/api/pull -d '{\"name\":\"llama2\"}' &&
+        echo 'Model download initiated! This may take several minutes in the background.'
       "
-    environment:
-      OLLAMA_HOST: http://ollama:11434
     networks:
       - search-network
+    restart: "no"
 
   # Backend - FastAPI with AI models
   backend:
