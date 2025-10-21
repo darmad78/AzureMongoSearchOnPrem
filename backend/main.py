@@ -126,9 +126,9 @@ async def transcribe_audio(audio: UploadFile = File(...)):
 @app.post("/documents/from-audio", response_model=DocumentResponse)
 async def create_document_from_audio(
     audio: UploadFile = File(...),
-    title: Optional[str] = None,
-    tags: Optional[str] = None,
-    language: Optional[str] = None
+    title: Optional[str] = Form(None),
+    tags: Optional[str] = Form(None),
+    language: Optional[str] = Form(None)
 ):
     """Upload audio file, transcribe it, and create a document with embeddings
     
