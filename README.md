@@ -17,6 +17,8 @@ A complete full-text search application built with MongoDB Enterprise Advanced 8
 
 ### Option 1: Docker Compose (Fastest - 5 minutes)
 
+**Best for:** Quick demos, development, testing
+
 ```bash
 # Clone the repository
 git clone https://github.com/darmad78/AzureMongoSearchOnPrem.git
@@ -31,7 +33,30 @@ docker-compose up -d
 # Access: http://localhost:5173
 ```
 
-### Option 2: Kubernetes (Full Enterprise - 30 minutes)
+**Note:** This uses Python-based vector search. For native MongoDB `$vectorSearch`, use Option 2 or 3.
+
+### Option 2: Hybrid Docker + K8s (Recommended - 15 minutes)
+
+**Best for:** Native `$vectorSearch` on modest hardware (6-7 CPUs)
+
+```bash
+# 1. Start Docker Compose stack (4 CPUs)
+docker-compose up -d
+
+# 2. Deploy mongot to Kubernetes (2-3 CPUs)
+export SEARCH_SYNC_PASSWORD="your-secure-password"
+./deploy-search-only.sh
+
+# 3. Create search user in MongoDB
+./scripts/create-search-user.sh
+
+# 4. Configure and restart
+# (Follow instructions from deploy-search-only.sh output)
+```
+
+📖 **Full Guide:** [HYBRID_DEPLOYMENT.md](./HYBRID_DEPLOYMENT.md)
+
+### Option 3: Full Kubernetes (Enterprise - 30 minutes)
 
 ```bash
 # Clone the repository
