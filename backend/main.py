@@ -127,19 +127,31 @@ async def transcribe_audio(audio: UploadFile = File(...)):
 async def create_document_from_audio(
     audio: UploadFile = File(...),
     title: Optional[str] = None,
-    tags: Optional[str] = None
+    tags: Optional[str] = None,
+    language: Optional[str] = None
 ):
-    """Upload audio file, transcribe it, and create a document with embeddings"""
+    """Upload audio file, transcribe it, and create a document with embeddings
+    
+    Parameters:
+    - audio: Audio file (.opus, .mp3, .wav, etc.)
+    - title: Optional title (auto-generated if not provided)
+    - tags: Optional comma-separated tags
+    - language: Optional language code (en, es, fr, de, it, etc.) - auto-detect if not provided
+    """
     try:
         # Save uploaded file temporarily
         with tempfile.NamedTemporaryFile(delete=False, suffix=os.path.splitext(audio.filename)[1]) as temp_audio:
             shutil.copyfileobj(audio.file, temp_audio)
             temp_path = temp_audio.name
         
-        # Transcribe audio
-        transcription_result = whisper_model.transcribe(temp_path)
+        # Transcribe audio with optional language
+        transcribe_options = {}
+        if language:
+            transcribe_options['language'] = language
+        
+        transcription_result = whisper_model.transcribe(temp_path, **transcribe_options)
         transcribed_text = transcription_result["text"]
-        detected_language = transcription_result.get("language", "unknown")
+        detected_language = transcription_result.get("language", language or "unknown")
         
         # Clean up temp file
         os.unlink(temp_path)

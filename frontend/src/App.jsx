@@ -15,6 +15,7 @@ function App() {
   const [audioFile, setAudioFile] = useState(null);
   const [audioTitle, setAudioTitle] = useState('');
   const [audioTags, setAudioTags] = useState('');
+  const [audioLanguage, setAudioLanguage] = useState('');
   const [isUploadingAudio, setIsUploadingAudio] = useState(false);
   const [uploadStatus, setUploadStatus] = useState('');
   const [chatQuestion, setChatQuestion] = useState('');
@@ -168,6 +169,7 @@ function App() {
       formData.append('audio', audioFile);
       if (audioTitle) formData.append('title', audioTitle);
       if (audioTags) formData.append('tags', audioTags);
+      if (audioLanguage) formData.append('language', audioLanguage);
 
       const response = await fetch(`${API_URL}/documents/from-audio`, {
         method: 'POST',
@@ -182,6 +184,7 @@ function App() {
         setAudioFile(null);
         setAudioTitle('');
         setAudioTags('');
+        setAudioLanguage('');
         document.getElementById('audio-file-input').value = '';
         
         // Refresh documents list
@@ -348,6 +351,39 @@ function App() {
                 onChange={(e) => setAudioTags(e.target.value)}
                 placeholder="meeting, notes, interview"
               />
+            </div>
+            <div className="form-group">
+              <label>Language (optional, auto-detect if empty):</label>
+              <select
+                value={audioLanguage}
+                onChange={(e) => setAudioLanguage(e.target.value)}
+              >
+                <option value="">Auto-detect</option>
+                <option value="en">English</option>
+                <option value="es">Spanish</option>
+                <option value="fr">French</option>
+                <option value="de">German</option>
+                <option value="it">Italian</option>
+                <option value="pt">Portuguese</option>
+                <option value="nl">Dutch</option>
+                <option value="ru">Russian</option>
+                <option value="zh">Chinese</option>
+                <option value="ja">Japanese</option>
+                <option value="ko">Korean</option>
+                <option value="ar">Arabic</option>
+                <option value="hi">Hindi</option>
+                <option value="pl">Polish</option>
+                <option value="tr">Turkish</option>
+                <option value="vi">Vietnamese</option>
+                <option value="uk">Ukrainian</option>
+                <option value="cs">Czech</option>
+                <option value="sv">Swedish</option>
+                <option value="da">Danish</option>
+                <option value="fi">Finnish</option>
+                <option value="no">Norwegian</option>
+                <option value="hu">Hungarian</option>
+                <option value="ro">Romanian</option>
+              </select>
             </div>
             <button type="submit" disabled={isUploadingAudio || !audioFile}>
               {isUploadingAudio ? '⏳ Processing...' : '🚀 Upload & Transcribe'}
