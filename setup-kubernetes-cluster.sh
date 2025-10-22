@@ -134,3 +134,4 @@ echo "📋 Cluster information:"
 echo "   Context: $CLUSTER_CONTEXT"
 echo "   Nodes: $(kubectl get nodes --no-headers | wc -l)"
 
+

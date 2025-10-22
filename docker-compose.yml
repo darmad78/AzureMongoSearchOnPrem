@@ -2,7 +2,7 @@ services:
   # MongoDB Enterprise Advanced
   # Note: For native $vectorSearch, deploy mongot separately using deploy-search-only.sh
   mongodb:
-    image: mongodb/mongodb-enterprise-server:8.0.3-ubuntu2204
+    image: mongodb/mongodb-enterprise-server:8.2.1-ubuntu2204
     container_name: mongodb-enterprise
     ports:
       - "27017:27017"
@@ -47,7 +47,7 @@ services:
 
   # MongoDB ReplicaSet and Search Index Initialization
   mongodb-setup:
-    image: mongodb/mongodb-enterprise-server:8.0.3-ubuntu2204
+    image: mongodb/mongodb-enterprise-server:8.2.1-ubuntu2204
     depends_on:
       mongodb:
         condition: service_healthy

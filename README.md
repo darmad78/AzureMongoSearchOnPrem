@@ -15,31 +15,17 @@ A complete full-text search application built with MongoDB Enterprise Advanced 8
 
 ## 🎯 Quick Start
 
-### Option 1: Docker Compose (Fastest - 5 minutes)
+### Option 1: Hybrid Docker + K8s (Recommended - 15 minutes)
 
-**Best for:** Quick demos, development, testing
+**Best for:** Native `$vectorSearch` on modest hardware (6-7 CPUs)
+
+This is the **recommended deployment** that gives you full MongoDB Enterprise Vector Search capabilities on modest hardware by splitting the workload between Docker Compose (application) and Kubernetes (mongot search nodes only).
 
 ```bash
 # Clone the repository
 git clone https://github.com/darmad78/AzureMongoSearchOnPrem.git
 cd AzureMongoSearchOnPrem
 
-# Check requirements
-./check-requirements.sh docker
-
-# Deploy everything
-docker-compose up -d
-
-# Access: http://localhost:5173
-```
-
-**Note:** This uses Python-based vector search. For native MongoDB `$vectorSearch`, use Option 2 or 3.
-
-### Option 2: Hybrid Docker + K8s (Recommended - 15 minutes)
-
-**Best for:** Native `$vectorSearch` on modest hardware (6-7 CPUs)
-
-```bash
 # 1. Start Docker Compose stack (4 CPUs)
 docker-compose up -d
 
@@ -56,7 +42,14 @@ export SEARCH_SYNC_PASSWORD="your-secure-password"
 
 📖 **Full Guide:** [HYBRID_DEPLOYMENT.md](./HYBRID_DEPLOYMENT.md)
 
-### Option 3: Full Kubernetes (Enterprise - 30 minutes)
+**Features:**
+- ✅ Native MongoDB `$vectorSearch` aggregation
+- ✅ Audio transcription with Whisper AI
+- ✅ RAG chat with Ollama
+- ✅ Semantic search with embeddings
+- ✅ Modern React UI with collapsible sections
+
+### Option 2: Full Kubernetes (Enterprise Production - 30 minutes)
 
 ```bash
 # Clone the repository
@@ -96,27 +89,32 @@ cd frontend && npm install && npm run dev
 
 ## 📋 Prerequisites
 
-### Docker Compose (Development)
+### Hybrid Deployment (Recommended)
 - **Docker**: 20.10+ with Docker Compose
-- **Minimum Hardware**: 4 CPU cores, 8GB RAM, 10GB disk
-- **Recommended Hardware**: 8 CPU cores, 16GB RAM, 20GB disk
+- **Kubernetes Cluster**: minikube, kind, Docker Desktop, or cloud K8s
+- **kubectl**: Kubernetes command-line tool
+- **Helm**: Package manager for Kubernetes
+- **Minimum Hardware**: 6 CPU cores, 8GB RAM, 15GB disk
+- **Recommended Hardware**: 8 CPU cores, 12GB RAM, 25GB disk
 
-### Kubernetes (Production)
-- **Kubernetes Cluster**: minikube, kind, Docker Desktop, or microk8s
+**Hybrid (6-7 CPUs total)** runs:
+- **Docker Compose (4 CPUs):**
+  - 1x MongoDB Enterprise (2 CPUs, 2GB RAM)
+  - 1x Backend with Whisper & embeddings (1 CPU, 1GB RAM)
+  - 1x Frontend (0.5 CPU, 512MB RAM)
+  - 1x Ollama LLM (0.5 CPU, 2GB RAM)
+- **Kubernetes (2-3 CPUs):**
+  - 1x mongot search pod (1-2 CPUs, 2-3GB RAM) - provides native `$vectorSearch`
+  - 1x Kubernetes Operator (0.5 CPU, 200MB RAM)
+
+### Full Kubernetes (Production)
+- **Kubernetes Cluster**: Production-grade cluster or managed K8s service
 - **kubectl**: Kubernetes command-line tool
 - **Helm**: Package manager for Kubernetes
 - **Minimum Hardware**: 10 CPU cores, 16GB RAM, 50GB disk
 - **Recommended Hardware**: 16 CPU cores, 32GB RAM, 100GB disk
 
-### Why Does Kubernetes Need More Resources?
-
-**Docker Compose (4 CPUs)** runs:
-- 1x MongoDB instance (single node)
-- 1x Ollama (LLM)
-- 1x Backend
-- 1x Frontend
-
-**Kubernetes (10+ CPUs)** runs a full enterprise stack:
+**Full Kubernetes (10+ CPUs)** runs a complete enterprise stack:
 - **3x MongoDB Enterprise pods** (high availability replica set)
   - Each pod: 1 CPU, 1GB RAM
   - Total: 3 CPUs, 3GB RAM

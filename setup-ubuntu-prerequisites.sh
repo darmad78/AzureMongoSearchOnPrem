@@ -94,3 +94,4 @@ echo "   - minikube (recommended for development)"
 echo "   - kind (lightweight, good for CI/CD)"
 echo "   - microk8s (snap-based, easy setup)"
 
+
