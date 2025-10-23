@@ -91,7 +91,7 @@ docker run --rm \
   -v ${VOLUME_NAME}:/data/db \
   -v $(pwd)/${KEYFILE_DIR}:/setup \
   alpine:latest \
-  sh -c 'cp /setup/keyfile /data/db/keyfile && chmod 400 /data/db/keyfile && chown 999:999 /data/db/keyfile && ls -la /data/db/keyfile'
+  sh -c 'cp /setup/keyfile /data/db/keyfile && chmod 400 /data/db/keyfile && chown -R 999:999 /data/db && ls -la /data/db'
 
 log_success "Volume and keyfile configured"
 
