@@ -17,14 +17,20 @@ services:
       - mongodb_data:/data/db
       - mongodb_config:/data/configdb
       - mongodb_keyfile:/data/keyfile
+    user: root
     command: >
       bash -c "
+        # Ensure keyfile directory exists with correct permissions
+        mkdir -p /data/keyfile
+        
         # Generate keyfile if not exists
         if [ ! -f /data/keyfile/mongodb.key ]; then
           openssl rand -base64 756 > /data/keyfile/mongodb.key
-          chmod 400 /data/keyfile/mongodb.key
-          chown mongodb:mongodb /data/keyfile/mongodb.key
         fi
+        
+        # Set correct permissions (must be done as root)
+        chmod 400 /data/keyfile/mongodb.key
+        chown mongodb:mongodb /data/keyfile/mongodb.key
         
         # Start MongoDB with optional search parameters
         SEARCH_PARAMS=\"\"

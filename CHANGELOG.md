@@ -22,9 +22,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Multiple Kubernetes cluster support (minikube, kind, microk8s)
 - Ubuntu-specific setup scripts
 - Cross-platform compatibility
+- Hybrid deployment guide (Docker Compose + Kubernetes)
 
 ### Changed
 - N/A
+
+### Fixed
+- MongoDB keyfile permission issues in Docker Compose deployment
+- Container startup now runs as root to properly set keyfile permissions
+- Added mkdir -p for keyfile directory to ensure it exists
 
 ### Deprecated
 - N/A

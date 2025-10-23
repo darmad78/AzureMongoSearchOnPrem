@@ -3,11 +3,16 @@
 
 services:
   mongodb:
-    # Disable authentication for quick demos (NOT for production!)
+    # Example 1: Disable authentication for quick demos (NOT for production!)
+    # environment:
+    #   MONGO_INITDB_ROOT_USERNAME: ""
+    #   MONGO_INITDB_ROOT_PASSWORD: ""
+    # command: mongod --replSet rs0 --bind_ip_all --noauth
+    
+    # Example 2: Connect to Kubernetes mongot for native $vectorSearch
+    # Uncomment and set your LoadBalancer IP after running deploy-search-only.sh
     environment:
-      MONGO_INITDB_ROOT_USERNAME: ""
-      MONGO_INITDB_ROOT_PASSWORD: ""
-    command: mongod --replSet rs0 --bind_ip_all --noauth
+      MONGOT_HOST: "YOUR_LOADBALANCER_IP:27027"
   
   ollama:
     # More lenient healthcheck for slower machines
