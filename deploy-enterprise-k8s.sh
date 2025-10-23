@@ -156,6 +156,28 @@ spec:
       labels:
         app: mongodb
     spec:
+      securityContext:
+        fsGroup: 999
+        runAsUser: 0
+      initContainers:
+      - name: setup-keyfile
+        image: busybox
+        command:
+        - sh
+        - -c
+        - |
+          cp /tmp/keyfile/keyfile /data/keyfile/mongodb.key
+          chmod 400 /data/keyfile/mongodb.key
+          chown 999:999 /data/keyfile/mongodb.key
+          chown -R 999:999 /data/db
+        volumeMounts:
+        - name: keyfile
+          mountPath: /tmp/keyfile
+          readOnly: true
+        - name: keyfile-dir
+          mountPath: /data/keyfile
+        - name: mongodb-data
+          mountPath: /data/db
       containers:
       - name: mongodb
         image: mongodb/mongodb-enterprise-server:${MONGODB_VERSION}
@@ -165,12 +187,6 @@ spec:
         - |
           set -e
           echo "Starting MongoDB Enterprise..."
-          
-          # Copy keyfile to container and set permissions
-          mkdir -p /data/keyfile
-          cat /etc/mongodb-keyfile/keyfile > /data/keyfile/mongodb.key
-          chmod 400 /data/keyfile/mongodb.key
-          chown mongodb:mongodb /data/keyfile/mongodb.key
           
           # Start MongoDB with search parameters
           exec mongod \
@@ -191,9 +207,8 @@ spec:
         volumeMounts:
         - name: mongodb-data
           mountPath: /data/db
-        - name: keyfile
-          mountPath: /etc/mongodb-keyfile
-          readOnly: true
+        - name: keyfile-dir
+          mountPath: /data/keyfile
         resources:
           requests:
             cpu: "1"
@@ -206,6 +221,8 @@ spec:
         secret:
           secretName: mongodb-keyfile
           defaultMode: 0400
+      - name: keyfile-dir
+        emptyDir: {}
   volumeClaimTemplates:
   - metadata:
       name: mongodb-data
@@ -309,7 +326,7 @@ spec:
     spec:
       containers:
       - name: mongot
-        image: mongodb/mongodb-atlas-search:${MONGOT_VERSION}
+        image: mongodb/mongodb-enterprise-search:latest
         ports:
         - containerPort: 27080
           name: mongot
