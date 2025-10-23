@@ -113,6 +113,7 @@ metadata:
 data:
   projectName: "mongodb-project"
   orgId: "mongodb-org"
+  baseUrl: "http://ops-manager-svc.${NAMESPACE}.svc.cluster.local:8080"
 ---
 apiVersion: v1
 kind: Secret
@@ -155,7 +156,7 @@ spec:
     spec:
       containers:
       - name: ops-manager
-        image: quay.io/mongodb/mongodb-enterprise-ops-manager:6.0.22
+        image: quay.io/mongodb/mongodb-enterprise-ops-manager-ubi:latest
         ports:
         - containerPort: 8080
         env:
