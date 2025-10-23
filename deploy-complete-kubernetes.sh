@@ -40,22 +40,47 @@ echo ""
 
 # Step 1: Clean existing deployment
 log_step "Step 1: Cleaning Existing Resources"
-log_info "Removing old deployments..."
+log_info "Removing old Docker containers and volumes..."
 docker compose down -v 2>/dev/null || true
 docker stop $(docker ps -aq) 2>/dev/null || true
 docker rm $(docker ps -aq) 2>/dev/null || true
-kubectl delete namespace ${NAMESPACE} --force --grace-period=0 2>/dev/null || true
-sleep 5
+docker volume prune -f 2>/dev/null || true
+
+log_info "Removing existing Kubernetes clusters..."
+kind delete cluster --name mongodb-cluster 2>/dev/null || true
+kind delete clusters --all 2>/dev/null || true
+sleep 3
 log_success "Cleanup complete"
 
-# Step 2: Verify Kubernetes cluster
-log_step "Step 2: Verifying Kubernetes Cluster"
-if ! kubectl cluster-info &>/dev/null; then
-    log_error "Kubernetes cluster not accessible"
-    log_info "Run: ./setup-kubernetes-cluster.sh"
-    exit 1
-fi
-log_success "Kubernetes cluster is ready"
+# Step 2: Create Kubernetes cluster
+log_step "Step 2: Creating Kubernetes Cluster"
+log_info "Creating kind cluster 'mongodb-cluster'..."
+
+kind create cluster --name mongodb-cluster --config - <<EOF
+kind: Cluster
+apiVersion: kind.x-k8s.io/v1alpha4
+nodes:
+- role: control-plane
+  extraPortMappings:
+  - containerPort: 30000
+    hostPort: 5173
+    protocol: TCP
+  - containerPort: 30001
+    hostPort: 8000
+    protocol: TCP
+  - containerPort: 30002
+    hostPort: 8080
+    protocol: TCP
+  - containerPort: 30003
+    hostPort: 27017
+    protocol: TCP
+EOF
+
+log_info "Waiting for cluster to be ready..."
+sleep 10
+kubectl wait --for=condition=Ready nodes --all --timeout=300s
+
+log_success "Kubernetes cluster created and ready"
 kubectl get nodes
 
 # Step 3: Create namespace
