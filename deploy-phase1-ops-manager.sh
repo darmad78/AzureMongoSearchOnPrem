@@ -1,5 +1,3 @@
-# Update the script to include the conf-mms.properties fix
-cat > deploy-phase1-ops-manager.sh << 'EOF'
 #!/bin/bash
 set -e
 
