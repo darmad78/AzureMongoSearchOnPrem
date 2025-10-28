@@ -114,7 +114,7 @@ spec:
     spec:
       containers:
       - name: mongodb
-        image: mongodb/mongodb-enterprise-server:8.2.1
+        image: mongodb/mongodb-enterprise-server:latest
         ports:
         - containerPort: 27017
         env:
