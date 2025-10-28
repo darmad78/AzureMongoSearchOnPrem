@@ -151,7 +151,7 @@ spec:
           httpGet:
             path: /api/public/v1.0/status
             port: 8080
-          initialDelaySeconds: 60
+          initialDelaySeconds: 120
           periodSeconds: 10
           timeoutSeconds: 5
           successThreshold: 1
@@ -160,7 +160,7 @@ spec:
           httpGet:
             path: /api/public/v1.0/status
             port: 8080
-          initialDelaySeconds: 120
+          initialDelaySeconds: 180
           periodSeconds: 30
           timeoutSeconds: 10
           successThreshold: 1
