@@ -40,25 +40,14 @@ fi
 
 log_success "kubectl is connected to Kubernetes cluster"
 
-# Step 2: Install MongoDB Kubernetes Operator
-log_step "Step 2: Installing MongoDB Kubernetes Operator"
+# Step 2: Install MongoDB Enterprise Operator ONLY
+log_step "Step 2: Installing MongoDB Enterprise Operator"
 log_info "Adding MongoDB Helm repository..."
 
 helm repo add mongodb https://mongodb.github.io/helm-charts
 helm repo update
 
-log_info "Installing MongoDB Kubernetes Operator..."
-helm install mongodb-kubernetes-operator mongodb/mongodb-kubernetes-operator \
-    --namespace mongodb-kubernetes-operator \
-    --create-namespace \
-    --wait
-
-log_success "MongoDB Kubernetes Operator installed"
-
-# Step 3: Install MongoDB Enterprise Operator
-log_step "Step 3: Installing MongoDB Enterprise Operator"
 log_info "Installing MongoDB Enterprise Operator..."
-
 helm install mongodb-enterprise-operator mongodb/mongodb-enterprise-operator \
     --namespace mongodb-enterprise-operator \
     --create-namespace \
@@ -66,8 +55,8 @@ helm install mongodb-enterprise-operator mongodb/mongodb-enterprise-operator \
 
 log_success "MongoDB Enterprise Operator installed"
 
-# Step 4: Deploy MongoDB Enterprise Advanced Database
-log_step "Step 4: Deploying MongoDB Enterprise Advanced Database"
+# Step 3: Deploy MongoDB Enterprise Advanced Database
+log_step "Step 3: Deploying MongoDB Enterprise Advanced Database"
 log_info "Deploying MongoDB Enterprise Advanced database for Ops Manager..."
 
 kubectl create namespace ${OPS_MANAGER_NAMESPACE} || true
@@ -123,8 +112,8 @@ log_info "Waiting for MongoDB Enterprise Advanced database to be ready..."
 kubectl wait --for=condition=Available deployment/ops-manager-db -n ${OPS_MANAGER_NAMESPACE} --timeout=300s
 log_success "MongoDB Enterprise Advanced database deployed"
 
-# Step 5: Create Custom Ops Manager Configuration
-log_step "Step 5: Creating Custom Ops Manager Configuration"
+# Step 4: Create Custom Ops Manager Configuration
+log_step "Step 4: Creating Custom Ops Manager Configuration"
 log_info "Creating custom mms.conf with correct MongoDB URI..."
 
 # Check if mms-config already exists and delete it
@@ -191,8 +180,8 @@ else
     exit 1
 fi
 
-# Step 6: Deploy Ops Manager Application
-log_step "Step 6: Deploying Ops Manager Application"
+# Step 5: Deploy Ops Manager Application
+log_step "Step 5: Deploying Ops Manager Application"
 log_info "Creating Ops Manager encryption key..."
 kubectl create secret generic ops-manager-key -n ${OPS_MANAGER_NAMESPACE} --from-literal=encryption-key="$(openssl rand -base64 32)" --dry-run=client -o yaml | kubectl apply -f -
 
@@ -305,8 +294,8 @@ EOF
 log_info "Waiting for Ops Manager to be ready..."
 kubectl wait --for=condition=Available deployment/ops-manager -n ${OPS_MANAGER_NAMESPACE} --timeout=600s
 
-# Step 7: Verify Deployment
-log_step "Step 7: Verifying Deployment"
+# Step 6: Verify Deployment
+log_step "Step 6: Verifying Deployment"
 log_info "Checking pod status..."
 
 # Check if all pods are running
@@ -333,8 +322,8 @@ fi
 
 log_success "Ops Manager deployed"
 
-# Step 8: Get Ops Manager Access Information
-log_step "Step 8: Ops Manager Access Information"
+# Step 7: Get Ops Manager Access Information
+log_step "Step 7: Ops Manager Access Information"
 log_info "Getting Ops Manager access details..."
 
 OPS_MANAGER_PORT=$(kubectl get svc ops-manager-svc -n ${OPS_MANAGER_NAMESPACE} -o jsonpath='{.spec.ports[0].nodePort}')
@@ -347,8 +336,8 @@ echo "   VM IP: ${VM_IP}"
 echo "   Port: ${OPS_MANAGER_PORT}"
 echo ""
 
-# Step 9: Web UI Setup Instructions
-log_step "Step 9: Web UI Setup Instructions"
+# Step 8: Web UI Setup Instructions
+log_step "Step 8: Web UI Setup Instructions"
 echo -e "${YELLOW}"
 cat << "EOF"
 ╔══════════════════════════════════════════════════════════════╗
@@ -376,4 +365,4 @@ EOF
 # Make the script executable
 chmod +x deploy-phase1-ops-manager.sh
 
-log_success "Phase 1 script updated with MongoDB URI configuration fix and proper validation"
+log_success "Phase 1 script updated - NO COMMUNITY, ENTERPRISE ONLY!"
