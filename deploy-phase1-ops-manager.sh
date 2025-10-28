@@ -101,6 +101,59 @@ kubectl create namespace ${OPS_MANAGER_NAMESPACE}
 log_info "Creating Ops Manager encryption key..."
 kubectl create secret generic ops-manager-key -n ${OPS_MANAGER_NAMESPACE} --from-literal=encryption-key="$(openssl rand -base64 32)" --dry-run=client -o yaml | kubectl apply -f -
 
+log_info "Deploying MongoDB database for Ops Manager..."
+kubectl apply -f - <<EOF
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ops-manager-db
+  namespace: ${OPS_MANAGER_NAMESPACE}
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: ops-manager-db
+  template:
+    metadata:
+      labels:
+        app: ops-manager-db
+    spec:
+      containers:
+      - name: mongodb
+        image: mongo:7.0
+        ports:
+        - containerPort: 27017
+        env:
+        - name: MONGO_INITDB_ROOT_USERNAME
+          value: "admin"
+        - name: MONGO_INITDB_ROOT_PASSWORD
+          value: "admin123"
+        resources:
+          requests:
+            cpu: "500m"
+            memory: "1Gi"
+          limits:
+            cpu: "1"
+            memory: "2Gi"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: ops-manager-db-svc
+  namespace: ${OPS_MANAGER_NAMESPACE}
+spec:
+  selector:
+    app: ops-manager-db
+  ports:
+  - port: 27017
+    targetPort: 27017
+  type: ClusterIP
+EOF
+
+log_info "Waiting for Ops Manager database to be ready..."
+kubectl wait --for=condition=Available deployment/ops-manager-db -n ${OPS_MANAGER_NAMESPACE} --timeout=300s
+
+log_info "Deploying Ops Manager application..."
 kubectl apply -f - <<EOF
 apiVersion: v1
 kind: PersistentVolumeClaim
@@ -145,6 +198,8 @@ spec:
           value: "admin123"
         - name: MMS_INITDB_DATABASE
           value: "mms"
+        - name: MMS_MONGODB_URI
+          value: "mongodb://ops-manager-db-svc:27017/mms"
         volumeMounts:
         - name: ops-manager-data
           mountPath: /data
