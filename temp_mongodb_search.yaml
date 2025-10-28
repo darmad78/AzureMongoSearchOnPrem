@@ -1,0 +1,18 @@
+apiVersion: mongodb.com/v1
+kind: MongoDBSearch
+metadata:
+  name: mongodb-rs
+  namespace: ${NAMESPACE}
+spec:
+  version: "8.2.1"
+  source:
+    mongodbResourceRef:
+      name: mongodb-rs
+  resourceRequirements:
+    requests:
+      cpu: "2"
+      memory: "3Gi"
+    limits:
+      cpu: "3"
+      memory: "4Gi"
+---

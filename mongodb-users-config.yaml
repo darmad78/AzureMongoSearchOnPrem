@@ -1,0 +1,76 @@
+apiVersion: v1
+kind: Secret
+metadata:
+  name: mongodb-admin-password
+  namespace: mongodb
+type: Opaque
+stringData:
+  password: "SecureAdmin123!"
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: mongodb-user-password
+  namespace: mongodb
+type: Opaque
+stringData:
+  password: "SecureUser456!"
+---
+apiVersion: mongodb.com/v1
+kind: MongoDBUser
+metadata:
+  name: admin-user
+  namespace: mongodb
+spec:
+  username: admin
+  db: admin
+  mongodbResourceRef:
+    name: mongodb-rs
+  passwordSecretKeyRef:
+    name: mongodb-admin-password
+    key: password
+  roles:
+  - name: root
+    db: admin
+  - name: clusterAdmin
+    db: admin
+  - name: userAdminAnyDatabase
+    db: admin
+---
+apiVersion: mongodb.com/v1
+kind: MongoDBUser
+metadata:
+  name: app-user
+  namespace: mongodb
+spec:
+  username: appuser
+  db: admin
+  mongodbResourceRef:
+    name: mongodb-rs
+  passwordSecretKeyRef:
+    name: mongodb-user-password
+    key: password
+  roles:
+  - name: readWrite
+    db: searchdb
+  - name: clusterMonitor
+    db: admin
+  - name: readWriteAnyDatabase
+    db: admin
+---
+apiVersion: mongodb.com/v1
+kind: MongoDBUser
+metadata:
+  name: search-sync-source-user
+  namespace: mongodb
+spec:
+  username: search-sync-source
+  db: admin
+  mongodbResourceRef:
+    name: mongodb-rs
+  passwordSecretKeyRef:
+    name: mongodb-rs-search-sync-source-password
+    key: password
+  roles:
+  - name: searchCoordinator
+    db: admin

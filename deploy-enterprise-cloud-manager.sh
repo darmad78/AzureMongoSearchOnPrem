@@ -131,9 +131,8 @@ log_step "Step 4: Configuring Cloud Manager Connection"
 
 kubectl create secret generic cloud-manager-credentials \
   -n ${NAMESPACE} \
-  --from-literal="user=${CM_PUBLIC_KEY}" \
-  --from-literal="publicApiKey=${CM_PUBLIC_KEY}" \
-  --from-literal="privateApiKey=${CM_PRIVATE_KEY}"
+  --from-literal="publicKey=${CM_PUBLIC_KEY}" \
+  --from-literal="privateKey=${CM_PRIVATE_KEY}"
 
 kubectl apply -f - <<EOF
 apiVersion: v1
