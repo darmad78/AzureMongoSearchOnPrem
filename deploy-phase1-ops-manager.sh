@@ -144,14 +144,15 @@ log_success "MongoDB Application Database deployed"
 log_step "Step 4: Installing Ops Manager on VM"
 log_info "Installing prerequisites..."
 
-yum install -y wget curl mongodb-org-tools || true
+sudo apt-get update
+sudo apt-get install -y wget curl
 
-log_info "Downloading Ops Manager RPM..."
+log_info "Downloading Ops Manager Debian package..."
 cd /tmp
-wget -q https://downloads.mongodb.com/on-prem-mms/rpm/mongodb-mms-13.0.0.x86_64.rpm
+wget -q https://downloads.mongodb.com/on-prem-mms/deb/mongodb-mms_13.0.0_amd64.deb
 
-log_info "Installing Ops Manager RPM..."
-rpm -ivh mongodb-mms-13.0.0.x86_64.rpm
+log_info "Installing Ops Manager..."
+sudo dpkg -i mongodb-mms_13.0.0_amd64.deb
 
 log_success "Ops Manager installed"
 
