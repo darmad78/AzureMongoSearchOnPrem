@@ -199,7 +199,7 @@ spec:
         - name: MMS_INITDB_DATABASE
           value: "mms"
         - name: MMS_MONGODB_URI
-          value: "mongodb://ops-manager-db-svc:27017/mms"
+          value: "mongodb://admin:admin123@ops-manager-db-svc:27017/mms?authSource=admin"
         volumeMounts:
         - name: ops-manager-data
           mountPath: /data
