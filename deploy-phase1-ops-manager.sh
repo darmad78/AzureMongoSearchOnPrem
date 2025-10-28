@@ -149,10 +149,10 @@ sudo apt-get install -y wget curl
 
 log_info "Downloading Ops Manager Debian package..."
 cd /tmp
-wget -q https://downloads.mongodb.com/on-prem-mms/deb/mongodb-mms_13.0.0_amd64.deb
+wget -q https://downloads.mongodb.com/on-prem-mms/deb/mongodb-mms-8.0.15.500.20251015T2126Z.amd64.deb
 
 log_info "Installing Ops Manager..."
-sudo dpkg -i mongodb-mms_13.0.0_amd64.deb
+sudo dpkg -i mongodb-mms-8.0.15.500.20251015T2126Z.amd64.deb
 
 log_success "Ops Manager installed"
 
