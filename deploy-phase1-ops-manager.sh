@@ -186,7 +186,35 @@ else
     log_error "Failed to create mms-config ConfigMap"
     exit 1
 fi
+# Step 4.5: Fix conf-mms.properties MongoDB URI
+log_step "Step 4.5: Fixing conf-mms.properties MongoDB URI"
+log_info "Updating conf-mms.properties to use correct MongoDB URI..."
 
+# Create a ConfigMap with the corrected conf-mms.properties
+kubectl create configmap conf-mms-properties -n ${OPS_MANAGER_NAMESPACE} --from-literal=conf-mms.properties="
+# Ops Manager MongoDB storage settings
+# The following MongoURI parameters are for configuring the MongoDB storage
+# configured to expect a local standalone instance of MongoDB running on
+# For more advanced configurations of the backing MongoDB store, such as
+# documentation at https://docs.opsmanager.mongodb.com/current/tutorial/prepare-backing-mongodb-instances/
+mongo.mongoUri=mongodb://admin:admin123@ops-manager-db-svc:27017/mms?authSource=admin
+mongo.ssl=false
+# MongoDB SSL Settings (Optional)
+# used by the Ops Manager server to connect to its MongoDB backing stores. These
+# settings are only applied to the mongoUri connection above when
+# \`mongo.ssl\` is set to true.
+# CAFile - the certificate of the CA that issued the MongoDB server certificate(s)
+#             (needed when MongoDB is running with --sslCAFile)
+mongodb.ssl.CAFile=
+mongodb.ssl.PEMKeyFile=
+mongodb.ssl.PEMKeyFilePassword=
+# to its MongoDB backing stores.
+# mms.kerberos.principal: The principal we used to authenticate with MongoDB. This should be the exact same user
+# on the mongoUri above.
+# See https://docs.opsmanager.mongodb.com/current/reference/configuration/
+" --dry-run=client -o yaml | kubectl apply -f -
+
+log_success "conf-mms.properties configuration created"
 # Step 5: Deploy Ops Manager Application
 log_step "Step 5: Deploying Ops Manager Application"
 log_info "Creating Ops Manager encryption key..."
