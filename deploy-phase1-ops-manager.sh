@@ -271,7 +271,9 @@ spec:
       - name: ops-manager
         image: quay.io/mongodb/mongodb-enterprise-ops-manager-ubi:8.0.15
         command: ["/bin/sh"]
-        args: ["-c", "/mongodb-ops-manager/bin/start-mongodb-mms --enc-key-path /data/encryption-key && sleep infinity"]        - containerPort: 8080
+        args: ["-c", "/mongodb-ops-manager/bin/start-mongodb-mms --enc-key-path /data/encryption-key && sleep infinity"]        
+        ports:
+        - containerPort: 8080
         env:
         - name: MMS_INITDB_ROOT_USERNAME
           value: "admin"
