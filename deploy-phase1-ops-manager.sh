@@ -142,6 +142,14 @@ log_success "MongoDB Application Database deployed"
 
 # Step 4: Install Ops Manager on VM
 log_step "Step 4: Installing Ops Manager on VM"
+
+# Check if already installed and remove
+if dpkg -l | grep -q mongodb-mms; then
+    log_warning "Ops Manager already installed, removing old version..."
+    sudo dpkg -r mongodb-mms || true
+    sudo apt-get autoremove -y
+fi
+
 log_info "Installing prerequisites..."
 
 sudo apt-get update
@@ -149,6 +157,7 @@ sudo apt-get install -y wget curl
 
 log_info "Downloading Ops Manager Debian package..."
 cd /tmp
+rm -f mongodb-mms-8.0.15.500.20251015T2126Z.amd64.deb
 wget -q https://downloads.mongodb.com/on-prem-mms/deb/mongodb-mms-8.0.15.500.20251015T2126Z.amd64.deb
 
 log_info "Installing Ops Manager..."
