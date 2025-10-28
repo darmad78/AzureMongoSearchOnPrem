@@ -91,116 +91,11 @@ helm install mongodb-kubernetes mongodb/mongodb-kubernetes \
 
 log_success "MongoDB Kubernetes Operator installed"
 
-# Step 4: Deploy Ops Manager Database
-log_step "Step 4: Deploying Ops Manager Database"
-log_info "Deploying MongoDB Community for Ops Manager database..."
+# Step 4: Deploy Ops Manager Application
+log_step "Step 4: Deploying Ops Manager Application"
+log_info "Deploying Ops Manager application..."
 
 kubectl create namespace ${OPS_MANAGER_NAMESPACE}
-
-kubectl apply -f - <<EOF
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: ops-manager-db-config
-  namespace: ${OPS_MANAGER_NAMESPACE}
-data:
-  mongod.conf: |
-    systemLog:
-      destination: file
-      path: "/data/appdb/mongodb.log"
-      logAppend: true
-    storage:
-      dbPath: "/data/appdb"
-      wiredTiger:
-        engineConfig:
-          cacheSizeGB: 1
-    processManagement:
-      fork: false
-      timeZoneInfo: /usr/share/zoneinfo
-    net:
-      bindIp: 0.0.0.0
-      port: 27017
-    setParameter:
-      enableLocalhostAuthBypass: false
----
-apiVersion: v1
-kind: PersistentVolumeClaim
-metadata:
-  name: ops-manager-db-pvc
-  namespace: ${OPS_MANAGER_NAMESPACE}
-spec:
-  accessModes:
-    - ReadWriteOnce
-  resources:
-    requests:
-      storage: 10Gi
----
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: ops-manager-db
-  namespace: ${OPS_MANAGER_NAMESPACE}
-spec:
-  replicas: 1
-  selector:
-    matchLabels:
-      app: ops-manager-db
-  template:
-    metadata:
-      labels:
-        app: ops-manager-db
-    spec:
-      containers:
-      - name: mongodb
-        image: mongo:7.0
-        ports:
-        - containerPort: 27017
-        volumeMounts:
-        - name: ops-manager-db-data
-          mountPath: /data/appdb
-        - name: config
-          mountPath: /etc/mongod.conf
-          subPath: mongod.conf
-        command:
-        - mongod
-        - --config
-        - /etc/mongod.conf
-        resources:
-          requests:
-            cpu: "500m"
-            memory: "1Gi"
-          limits:
-            cpu: "1"
-            memory: "2Gi"
-      volumes:
-      - name: ops-manager-db-data
-        persistentVolumeClaim:
-          claimName: ops-manager-db-pvc
-      - name: config
-        configMap:
-          name: ops-manager-db-config
----
-apiVersion: v1
-kind: Service
-metadata:
-  name: ops-manager-db-svc
-  namespace: ${OPS_MANAGER_NAMESPACE}
-spec:
-  selector:
-    app: ops-manager-db
-  ports:
-  - port: 27017
-    targetPort: 27017
-  type: ClusterIP
-EOF
-
-log_info "Waiting for Ops Manager database to be ready..."
-kubectl wait --for=condition=Available deployment/ops-manager-db -n ${OPS_MANAGER_NAMESPACE} --timeout=300s
-log_success "Ops Manager database deployed"
-
-# Step 5: Deploy Ops Manager Application
-log_step "Step 5: Deploying Ops Manager Application"
-log_info "Deploying Ops Manager application..."
 
 kubectl apply -f - <<EOF
 apiVersion: v1
@@ -242,8 +137,6 @@ spec:
           value: "admin123"
         - name: MMS_INITDB_DATABASE
           value: "mms"
-        - name: MMS_MONGODB_URI
-          value: "mongodb://ops-manager-db-svc.${OPS_MANAGER_NAMESPACE}.svc.cluster.local:27017/mms"
         volumeMounts:
         - name: ops-manager-data
           mountPath: /data
@@ -295,8 +188,8 @@ log_info "Waiting for Ops Manager to be ready..."
 kubectl wait --for=condition=Available deployment/ops-manager -n ${OPS_MANAGER_NAMESPACE} --timeout=600s
 log_success "Ops Manager deployed"
 
-# Step 6: Get Ops Manager Access Information
-log_step "Step 6: Ops Manager Access Information"
+# Step 5: Get Ops Manager Access Information
+log_step "Step 5: Ops Manager Access Information"
 log_info "Getting Ops Manager access details..."
 
 OPS_MANAGER_PORT=$(kubectl get svc ops-manager-svc -n ${OPS_MANAGER_NAMESPACE} -o jsonpath='{.spec.ports[0].nodePort}')
@@ -311,8 +204,8 @@ echo "   VM IP: ${VM_IP}"
 echo "   Port: ${OPS_MANAGER_PORT}"
 echo ""
 
-# Step 7: Web UI Setup Instructions
-log_step "Step 7: Web UI Setup Instructions"
+# Step 6: Web UI Setup Instructions
+log_step "Step 6: Web UI Setup Instructions"
 echo -e "${YELLOW}"
 cat << "EOF"
 ╔══════════════════════════════════════════════════════════════╗
