@@ -38,13 +38,10 @@ fi
 
 log_success "kubectl is connected to Kubernetes cluster"
 
-log_info "Checking if running as root..."
+log_info "Checking for root privileges..."
 if [[ $EUID -ne 0 ]]; then
-    log_error "This script must be run as root (use: sudo bash script.sh)"
-    exit 1
+    log_warning "Some commands require sudo, will prompt as needed"
 fi
-
-log_success "Running as root"
 
 # Step 2: Install MongoDB Enterprise Operator
 log_step "Step 2: Installing MongoDB Enterprise Operator"
