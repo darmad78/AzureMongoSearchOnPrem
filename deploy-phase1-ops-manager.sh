@@ -1,5 +1,3 @@
-# Update the Phase 1 script with proper validation and control
-cat > deploy-phase1-ops-manager.sh << 'EOF'
 #!/bin/bash
 set -e
 
