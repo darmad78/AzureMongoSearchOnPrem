@@ -91,17 +91,11 @@ helm install mongodb-kubernetes mongodb/mongodb-kubernetes \
 
 log_success "MongoDB Kubernetes Operator installed"
 
-# Step 4: Deploy Ops Manager Application
-log_step "Step 4: Deploying Ops Manager Application"
-log_info "Deploying Ops Manager application..."
+# Step 4: Deploy MongoDB Enterprise Advanced Database
+log_step "Step 4: Deploying MongoDB Enterprise Advanced Database"
+log_info "Deploying MongoDB Enterprise Advanced database for Ops Manager..."
 
 kubectl create namespace ${OPS_MANAGER_NAMESPACE}
-
-# Create encryption key secret
-log_info "Creating Ops Manager encryption key..."
-kubectl create secret generic ops-manager-key -n ${OPS_MANAGER_NAMESPACE} --from-literal=encryption-key="$(openssl rand -base64 32)" --dry-run=client -o yaml | kubectl apply -f -
-
-log_info "Deploying MongoDB database for Ops Manager..."
 kubectl apply -f - <<EOF
 apiVersion: apps/v1
 kind: Deployment
@@ -120,7 +114,7 @@ spec:
     spec:
       containers:
       - name: mongodb
-        image: mongo:7.0
+        image: mongodb/mongodb-enterprise-server:8.2.1
         ports:
         - containerPort: 27017
         env:
@@ -150,8 +144,14 @@ spec:
   type: ClusterIP
 EOF
 
-log_info "Waiting for Ops Manager database to be ready..."
+log_info "Waiting for MongoDB Enterprise Advanced database to be ready..."
 kubectl wait --for=condition=Available deployment/ops-manager-db -n ${OPS_MANAGER_NAMESPACE} --timeout=300s
+log_success "MongoDB Enterprise Advanced database deployed"
+
+# Step 5: Deploy Ops Manager Application
+log_step "Step 5: Deploying Ops Manager Application"
+log_info "Creating Ops Manager encryption key..."
+kubectl create secret generic ops-manager-key -n ${OPS_MANAGER_NAMESPACE} --from-literal=encryption-key="$(openssl rand -base64 32)" --dry-run=client -o yaml | kubectl apply -f -
 
 log_info "Deploying Ops Manager application..."
 kubectl apply -f - <<EOF
@@ -199,7 +199,7 @@ spec:
         - name: MMS_INITDB_DATABASE
           value: "mms"
         - name: MMS_MONGODB_URI
-          value: "mongodb://ops-manager-db-svc:27017/mms"
+          value: "mongodb://admin:admin123@ops-manager-db-svc:27017/mms?authSource=admin"
         volumeMounts:
         - name: ops-manager-data
           mountPath: /data
@@ -257,8 +257,8 @@ log_info "Waiting for Ops Manager to be ready..."
 kubectl wait --for=condition=Available deployment/ops-manager -n ${OPS_MANAGER_NAMESPACE} --timeout=600s
 log_success "Ops Manager deployed"
 
-# Step 5: Get Ops Manager Access Information
-log_step "Step 5: Ops Manager Access Information"
+# Step 6: Get Ops Manager Access Information
+log_step "Step 6: Ops Manager Access Information"
 log_info "Getting Ops Manager access details..."
 
 OPS_MANAGER_PORT=$(kubectl get svc ops-manager-svc -n ${OPS_MANAGER_NAMESPACE} -o jsonpath='{.spec.ports[0].nodePort}')
@@ -273,8 +273,8 @@ echo "   VM IP: ${VM_IP}"
 echo "   Port: ${OPS_MANAGER_PORT}"
 echo ""
 
-# Step 6: Web UI Setup Instructions
-log_step "Step 6: Web UI Setup Instructions"
+# Step 7: Web UI Setup Instructions
+log_step "Step 7: Web UI Setup Instructions"
 echo -e "${YELLOW}"
 cat << "EOF"
 ╔══════════════════════════════════════════════════════════════╗
