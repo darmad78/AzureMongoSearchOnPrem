@@ -113,8 +113,76 @@ helm install mongodb-kubernetes mongodb/mongodb-kubernetes \
 
 log_success "MongoDB Kubernetes Operator installed"
 
-# Step 5: Deploy Ops Manager
-log_step "Step 5: Deploying Ops Manager"
+# Step 5: Create Dummy Credentials for MongoDB Enterprise
+log_step "Step 5: Creating Dummy Credentials for MongoDB Enterprise"
+log_info "Creating dummy credentials to allow MongoDB Enterprise deployment..."
+
+# Create dummy credentials secret
+kubectl create secret generic om-credentials \
+  -n ${NAMESPACE} \
+  --from-literal=publicKey="dummy-key" \
+  --from-literal=privateKey="dummy-key" \
+  --dry-run=client -o yaml | kubectl apply -f -
+
+# Create dummy Ops Manager config
+kubectl apply -f - <<EOF
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: om-project
+  namespace: ${NAMESPACE}
+data:
+  projectName: "dummy-project"
+  orgId: "dummy-org"
+  baseUrl: "https://dummy-url.com"
+EOF
+
+log_success "Dummy credentials created"
+
+# Step 6: Deploy MongoDB Enterprise First
+log_step "Step 6: Deploying MongoDB Enterprise (Before Ops Manager)"
+log_info "Deploying MongoDB Enterprise replica set with dummy credentials..."
+
+kubectl apply -f - <<EOF
+apiVersion: mongodb.com/v1
+kind: MongoDB
+metadata:
+  name: mdb-rs
+  namespace: ${NAMESPACE}
+spec:
+  members: 3
+  version: 8.2.0-ent
+  type: ReplicaSet
+  credentials: om-credentials
+  opsManager:
+    configMapRef:
+      name: om-project
+  security:
+    authentication:
+      enabled: true
+      modes:
+      - SCRAM
+  podSpec:
+    podTemplate:
+      spec:
+        containers:
+        - name: mongodb-enterprise-database
+          resources:
+            limits:
+              cpu: "2"
+              memory: 2Gi
+            requests:
+              cpu: "1"
+              memory: 1Gi
+EOF
+
+log_info "Waiting for MongoDB resource to reach Running phase..."
+kubectl wait --for=jsonpath='{.status.phase}'=Running "mdb/mdb-rs" -n ${NAMESPACE} --timeout=400s
+
+log_success "MongoDB Enterprise deployed and running"
+
+# Step 7: Deploy Ops Manager (Optional)
+log_step "Step 7: Deploying Ops Manager (Optional)"
 log_info "Deploying Ops Manager with Helm..."
 
 # Create namespace
@@ -134,8 +202,8 @@ helm install ops-manager mongodb/ops-manager \
 
 log_success "Ops Manager deployed"
 
-# Step 6: Get Ops Manager Credentials
-log_step "Step 6: Ops Manager Setup Required"
+# Step 8: Get Ops Manager Credentials
+log_step "Step 8: Ops Manager Setup Required"
 echo -e "${YELLOW}"
 cat << "EOF"
 ╔══════════════════════════════════════════════════════════════╗
