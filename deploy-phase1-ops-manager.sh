@@ -97,6 +97,10 @@ log_info "Deploying Ops Manager application..."
 
 kubectl create namespace ${OPS_MANAGER_NAMESPACE}
 
+# Create encryption key secret
+log_info "Creating Ops Manager encryption key..."
+kubectl create secret generic ops-manager-key -n ${OPS_MANAGER_NAMESPACE} --from-literal=encryption-key="$(openssl rand -base64 32)" --dry-run=client -o yaml | kubectl apply -f -
+
 kubectl apply -f - <<EOF
 apiVersion: v1
 kind: PersistentVolumeClaim
@@ -128,6 +132,10 @@ spec:
       containers:
       - name: ops-manager
         image: quay.io/mongodb/mongodb-enterprise-ops-manager-ubi:8.0.15
+        command: ["/bin/sh"]
+        args: ["-c", "/mongodb-ops-manager/bin/start-mongodb-mms --enc-key-path /data/encryption-key && sleep infinity"]
+        securityContext:
+          runAsUser: 0
         ports:
         - containerPort: 8080
         env:
@@ -140,6 +148,9 @@ spec:
         volumeMounts:
         - name: ops-manager-data
           mountPath: /data
+        - name: encryption-key
+          mountPath: /data/encryption-key
+          subPath: encryption-key
         resources:
           requests:
             cpu: "1"
@@ -169,6 +180,9 @@ spec:
       - name: ops-manager-data
         persistentVolumeClaim:
           claimName: ops-manager-data-pvc
+      - name: encryption-key
+        secret:
+          secretName: ops-manager-key
 ---
 apiVersion: v1
 kind: Service
