@@ -43,7 +43,14 @@ log_success "kubectl is connected to Kubernetes cluster"
 # Step 2: Install MongoDB Enterprise Operator ONLY
 log_step "Step 2: Installing MongoDB Enterprise Operator"
 log_info "Adding MongoDB Helm repository..."
+# Uninstall existing operators
+helm uninstall mongodb-kubernetes -n mongodb 2>/dev/null || true
+helm uninstall mongodb-kubernetes -n mongodb-enterprise-operator 2>/dev/null || true
 
+# Clean up any remaining resources
+kubectl delete namespace mongodb-enterprise-operator 2>/dev/null || true
+
+log_info "Adding MongoDB Helm repository..."
 helm repo add mongodb https://mongodb.github.io/helm-charts
 helm repo update
 
