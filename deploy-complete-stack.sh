@@ -176,21 +176,158 @@ sed -i "s/your-private-api-key/${PRIVATE_KEY}/g" ops-manager-config.yaml
 
 log_success "Ops Manager configuration updated"
 
-# Step 8: Deploy All Components
-log_step "Step 8: Deploying All Components"
-log_info "Deploying MongoDB Enterprise, Search, Backend, Frontend, and Ollama..."
+# Step 8: Deploy MongoDB Enterprise (Official Guide)
+log_step "Step 8: Deploying MongoDB Enterprise (Official Guide)"
+log_info "Deploying MongoDB Enterprise using official guide approach..."
 
-# Deploy Ops Manager configuration
-kubectl apply -f ops-manager-config.yaml
+# Deploy MongoDB Enterprise using official guide
+kubectl apply -f - <<EOF
+apiVersion: mongodb.com/v1
+kind: MongoDB
+metadata:
+  name: mdb-rs
+  namespace: ${NAMESPACE}
+spec:
+  members: 3
+  version: 8.2.0-ent
+  type: ReplicaSet
+  opsManager:
+    configMapRef:
+      name: om-project
+  credentials: om-credentials
+  security:
+    authentication:
+      enabled: true
+      ignoreUnknownUsers: true
+      modes:
+      - SCRAM
+  agent:
+    logLevel: INFO
+  podSpec:
+    podTemplate:
+      spec:
+        containers:
+        - name: mongodb-enterprise-database
+          resources:
+            limits:
+              cpu: "2"
+              memory: 2Gi
+            requests:
+              cpu: "1"
+              memory: 1Gi
+EOF
 
-# Deploy MongoDB Replica Set
-kubectl apply -f mongodb-enterprise-replica-set.yaml
+log_info "Waiting for MongoDB resource to reach Running phase..."
+kubectl wait --for=jsonpath='{.status.phase}'=Running "mdb/mdb-rs" -n ${NAMESPACE} --timeout=400s
 
-# Deploy MongoDB Users
-kubectl apply -f mongodb-users-config.yaml
+log_success "MongoDB Enterprise deployed and running"
 
-# Deploy MongoDB Search
-kubectl apply -f mongodb-search-config.yaml
+# Step 9: Create MongoDB Users (Official Guide)
+log_step "Step 9: Creating MongoDB Users (Official Guide)"
+log_info "Creating MongoDB users using official guide approach..."
+
+# Admin user
+kubectl create secret generic mdb-admin-user-password \
+  -n ${NAMESPACE} \
+  --from-literal=password="admin-user-password-CHANGE-ME"
+
+kubectl apply -f - <<EOF
+apiVersion: mongodb.com/v1
+kind: MongoDBUser
+metadata:
+  name: mdb-admin
+  namespace: ${NAMESPACE}
+spec:
+  username: mdb-admin
+  db: admin
+  mongodbResourceRef:
+    name: mdb-rs
+  passwordSecretKeyRef:
+    name: mdb-admin-user-password
+    key: password
+  roles:
+  - name: root
+    db: admin
+EOF
+
+# Search sync user
+kubectl create secret generic mdb-rs-search-sync-source-password \
+  -n ${NAMESPACE} \
+  --from-literal=password="search-sync-user-password-CHANGE-ME"
+
+kubectl apply -f - <<EOF
+apiVersion: mongodb.com/v1
+kind: MongoDBUser
+metadata:
+  name: search-sync-source-user
+  namespace: ${NAMESPACE}
+spec:
+  username: search-sync-source
+  db: admin
+  mongodbResourceRef:
+    name: mdb-rs
+  passwordSecretKeyRef:
+    name: mdb-rs-search-sync-source-password
+    key: password
+  roles:
+  - name: searchCoordinator
+    db: admin
+EOF
+
+# Regular user
+kubectl create secret generic mdb-user-password \
+  -n ${NAMESPACE} \
+  --from-literal=password="mdb-user-password-CHANGE-ME"
+
+kubectl apply -f - <<EOF
+apiVersion: mongodb.com/v1
+kind: MongoDBUser
+metadata:
+  name: mdb-user
+  namespace: ${NAMESPACE}
+spec:
+  username: mdb-user
+  db: admin
+  mongodbResourceRef:
+    name: mdb-rs
+  passwordSecretKeyRef:
+    name: mdb-user-password
+    key: password
+  roles:
+  - name: readWrite
+    db: sample_mflix
+EOF
+
+log_success "MongoDB users created"
+
+# Step 10: Deploy MongoDB Search (Official Guide)
+log_step "Step 10: Deploying MongoDB Search (Official Guide)"
+log_info "Deploying MongoDB Search using official guide approach..."
+
+kubectl apply -f - <<EOF
+apiVersion: mongodb.com/v1
+kind: MongoDBSearch
+metadata:
+  name: mdb-rs
+  namespace: ${NAMESPACE}
+spec:
+  resourceRequirements:
+    limits:
+      cpu: "3"
+      memory: 5Gi
+    requests:
+      cpu: "2"
+      memory: 3Gi
+EOF
+
+log_info "Waiting for MongoDBSearch resource to reach Running phase..."
+kubectl wait --for=jsonpath='{.status.phase}'=Running "mdbs/mdb-rs" -n ${NAMESPACE} --timeout=300s
+
+log_success "MongoDB Search deployed and running"
+
+# Step 11: Deploy Backend and Frontend
+log_step "Step 11: Deploying Backend and Frontend"
+log_info "Deploying Backend and Frontend..."
 
 # Deploy Backend and Frontend
 kubectl apply -f backend-frontend-config.yaml
