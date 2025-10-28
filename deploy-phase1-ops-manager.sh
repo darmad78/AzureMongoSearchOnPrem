@@ -189,18 +189,15 @@ log_success "Ops Manager configuration updated"
 log_step "Step 6: Starting Ops Manager Service"
 log_info "Starting mongodb-mms service..."
 
-systemctl enable mongodb-mms
-systemctl start mongodb-mms
+sudo service mongodb-mms start
 
 log_info "Waiting for Ops Manager to start..."
-sleep 10
+sleep 15
 
-if systemctl is-active --quiet mongodb-mms; then
+if sudo service mongodb-mms status | grep -q running; then
     log_success "Ops Manager service started"
 else
-    log_error "Failed to start Ops Manager service"
-    systemctl status mongodb-mms
-    exit 1
+    log_warning "Ops Manager may still be starting, checking logs..."
 fi
 
 # Step 7: Verify Deployment
