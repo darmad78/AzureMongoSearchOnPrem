@@ -2,7 +2,7 @@
 set -e
 
 # Phase 1: Deploy Ops Manager on VM + MongoDB in Kubernetes
-# With proper networking via kubectl port-forward
+# With NodePort for stable networking
 
 # Colors for output
 RED='\033[0;31m'
@@ -135,27 +135,24 @@ log_info "Waiting for MongoDB Application Database to be ready..."
 kubectl wait --for=condition=Available deployment/ops-manager-appdb -n ${OPS_MANAGER_NAMESPACE} --timeout=300s
 log_success "MongoDB Application Database deployed"
 
-# Step 4: Setup Port Forward for K8s MongoDB
-log_step "Step 4: Setting up port-forward to K8s MongoDB"
-log_info "Creating port-forward (27017:27017)..."
+# Step 4: Expose MongoDB via NodePort
+log_step "Step 4: Exposing MongoDB via NodePort"
+log_info "Converting service to NodePort..."
 
-# Kill any existing port-forwards
-pkill -f "kubectl port-forward.*ops-manager-appdb-svc" 2>/dev/null || true
+kubectl patch svc ops-manager-appdb-svc -n ${OPS_MANAGER_NAMESPACE} -p '{"spec":{"type":"NodePort"}}'
 
-# Start port-forward in background
-kubectl port-forward -n ${OPS_MANAGER_NAMESPACE} svc/ops-manager-appdb-svc 27017:27017 > /tmp/port-forward.log 2>&1 &
-PORT_FORWARD_PID=$!
-
-log_info "Waiting for port-forward to establish..."
 sleep 5
 
-if kill -0 $PORT_FORWARD_PID 2>/dev/null; then
-    log_success "Port-forward established (PID: $PORT_FORWARD_PID)"
-else
-    log_error "Port-forward failed to start"
-    cat /tmp/port-forward.log
-    exit 1
+# Get NodePort and Node IP
+NODE_PORT=$(kubectl get svc ops-manager-appdb-svc -n ${OPS_MANAGER_NAMESPACE} -o jsonpath='{.spec.ports[0].nodePort}')
+NODE_IP=$(kubectl get nodes -o jsonpath='{.items[0].status.addresses[?(@.type=="ExternalIP")].address}')
+
+# If ExternalIP not found, use InternalIP
+if [ -z "$NODE_IP" ]; then
+  NODE_IP=$(kubectl get nodes -o jsonpath='{.items[0].status.addresses[?(@.type=="InternalIP")].address}')
 fi
+
+log_success "MongoDB accessible at: $NODE_IP:$NODE_PORT"
 
 # Step 5: Install Ops Manager on VM
 log_step "Step 5: Installing Ops Manager on VM"
@@ -183,15 +180,15 @@ log_success "Ops Manager installed"
 
 # Step 6: Configure Ops Manager
 log_step "Step 6: Configuring Ops Manager"
-log_info "Updating MongoDB connection to use port-forward (localhost:27017)..."
+log_info "Updating MongoDB connection to NodePort ($NODE_IP:$NODE_PORT)..."
 
 CONF_FILE="/opt/mongodb/mms/conf/conf-mms.properties"
 
 # Backup original
 sudo cp ${CONF_FILE} ${CONF_FILE}.backup
 
-# Update MongoDB URI to use localhost via port-forward
-sudo sed -i "s|mongo.mongoUri=.*|mongo.mongoUri=mongodb://admin:admin123@127.0.0.1:27017/mms?authSource=admin|g" ${CONF_FILE}
+# Update MongoDB URI to use K8s NodePort
+sudo sed -i "s|mongo.mongoUri=.*|mongo.mongoUri=mongodb://admin:admin123@$NODE_IP:$NODE_PORT/mms?authSource=admin|g" ${CONF_FILE}
 sudo sed -i "s|mongo.ssl=.*|mongo.ssl=false|g" ${CONF_FILE}
 
 log_success "Ops Manager configuration updated"
@@ -207,13 +204,13 @@ log_info "Starting mongodb-mms service..."
 
 sudo service mongodb-mms start
 
-log_info "Waiting for Ops Manager to start (30 seconds)..."
-sleep 30
+log_info "Waiting for Ops Manager to initialize (2 minutes)..."
+sleep 120
 
 if sudo service mongodb-mms status | grep -q running; then
-    log_success "Ops Manager service started"
+    log_success "Ops Manager service running"
 else
-    log_warning "Ops Manager may still be starting..."
+    log_warning "Ops Manager may still be initializing..."
 fi
 
 # Step 9: Verify Deployment
@@ -226,8 +223,8 @@ log_info "Testing Ops Manager connectivity..."
 if curl -s http://localhost:8080 > /dev/null 2>&1; then
     log_success "Ops Manager is accessible"
 else
-    log_warning "Ops Manager not yet responding, checking logs..."
-    sudo tail -20 /opt/mongodb/mms/logs/mms-migration.log || true
+    log_warning "Ops Manager not yet responding, still initializing..."
+    log_info "Check status in 1-2 minutes with: curl http://localhost:8080"
 fi
 
 # Step 10: Get Access Information
@@ -241,10 +238,10 @@ echo "   URL: ${OPS_MANAGER_URL}"
 echo "   VM IP: ${VM_IP}"
 echo "   Port: 8080"
 echo ""
-echo -e "${BLUE}📋 Port-Forward Information:${NC}"
-echo "   MongoDB via port-forward: localhost:27017"
-echo "   Port-forward PID: $PORT_FORWARD_PID"
-echo "   To stop port-forward: kill $PORT_FORWARD_PID"
+echo -e "${BLUE}📋 MongoDB Backend Information:${NC}"
+echo "   Accessible at: $NODE_IP:$NODE_PORT"
+echo "   Username: admin"
+echo "   Password: admin123"
 echo ""
 
 # Step 11: Web UI Setup Instructions
@@ -258,28 +255,42 @@ cat << "EOF"
 Please open the Ops Manager URL in your browser and complete:
 
 1.  **Open Ops Manager**: Navigate to the URL above
+    (Wait 1-2 minutes if not loading - migration is completing)
+
 2.  **Sign Up**: Create the first admin user
+
 3.  **Create Organization**: Name it "MongoDB Search Demo"
+
 4.  **Create Project**: Name it "Search Project"
+
 5.  **Configure Settings**: 
     - Set Base URL to http://<VM_IP>:8080
+
 6.  **Generate API Keys**: 
     - Go to Project Settings → Access Manager → API Keys
     - Generate new API Key (Public and Private)
-7.  **Add VM IP to API Access List**: Add your VM's IP to allow communication
-8.  **Save Credentials**: Keep Organization ID, Project ID, and API Keys for Phase 2
 
-To check Ops Manager logs:
-   sudo tail -f /opt/mongodb/mms/logs/mms.log
+7.  **Add VM IP to API Access List**: 
+    - Add your VM's IP to allow communication
 
-To check MongoDB migration:
-   sudo tail -f /opt/mongodb/mms/logs/mms-migration.log
+8.  **Save Credentials**: 
+    - Keep Organization ID, Project ID, and API Keys for Phase 2
 
-To check service status:
-   sudo service mongodb-mms status
+Useful Commands:
+  Check service status:
+    sudo service mongodb-mms status
+
+  View migration logs:
+    sudo tail -f /opt/mongodb/mms/logs/mms-migration.log
+
+  View application logs:
+    sudo tail -f /opt/mongodb/mms/logs/mms.log
+
+  Test connectivity:
+    curl http://localhost:8080
 
 EOF
 echo -e "${NC}"
 
 log_success "Phase 1 deployment complete!"
-log_info "Port-forward running in background. Open ${OPS_MANAGER_URL} in your browser"
+log_info "Open ${OPS_MANAGER_URL} in your browser"
