@@ -14,80 +14,63 @@ NC='\033[0m'
 log_info() { echo -e "${BLUE}ℹ️  $1${NC}"; }
 log_success() { echo -e "${GREEN}✅ $1${NC}"; }
 log_warning() { echo -e "${YELLOW}⚠️  $1${NC}"; }
-log_error() { echo -e "${RED}❌ $1${NC}"; }
-log_step() { echo -e "\n${BLUE}🚀 $1${NC}\n=================================================="; }
-
-echo -e "${BLUE}"
-cat << "EOF"
-╔══════════════════════════════════════════════════════════════╗
-║                    Phase 1: Ops Manager Setup              ║
-║              Self-Hosted Ops Manager in Kubernetes         ║
-╚══════════════════════════════════════════════════════════════╝
-EOF
-echo -e "${NC}"
+log_error() { echo -e "${RED}❌ $1${NC}"; exit 1; }
+log_step() { echo -e "\n${YELLOW}🚀 $1${NC}\n=================================================="; }
 
 # Configuration
-NAMESPACE="mongodb"
+K8S_CLUSTER_NAME="mongodb-cluster"
 OPS_MANAGER_NAMESPACE="ops-manager"
+MONGODB_OPERATOR_NAMESPACE="mongodb"
+VM_IP=$(hostname -I | awk '{print $1}') # Auto-detect VM's IP
 
-# Step 1: Clean Environment
+echo -e "╔══════════════════════════════════════════════════════════════╗"
+echo -e "║                    Phase 1: Ops Manager Setup              ║"
+echo -e "║              Self-Hosted Ops Manager in Kubernetes         ║"
+echo -e "╚══════════════════════════════════════════════════════════════╝"
+
+# Step 1: Cleaning Environment
 log_step "Step 1: Cleaning Environment"
 log_info "Removing old deployments..."
-
-# Clean Kubernetes
-kubectl delete namespace ${NAMESPACE} --ignore-not-found=true --wait=true 2>/dev/null || true
-kubectl delete namespace ${OPS_MANAGER_NAMESPACE} --ignore-not-found=true --wait=true 2>/dev/null || true
-
-# Clean kind clusters
-kind delete cluster --name mongodb-cluster 2>/dev/null || true
-kind delete clusters --all 2>/dev/null || true
-
+kubectl delete namespace ${OPS_MANAGER_NAMESPACE} --ignore-not-found --force --grace-period=0
+kubectl delete namespace ${MONGODB_OPERATOR_NAMESPACE} --ignore-not-found --force --grace-period=0
+kind delete cluster --name ${K8S_CLUSTER_NAME} || true
 sleep 5
 log_success "Environment cleaned"
 
-# Step 2: Create Kubernetes Cluster
+# Step 2: Creating Kubernetes Cluster
 log_step "Step 2: Creating Kubernetes Cluster"
 log_info "Creating kind cluster with port mappings..."
-
-# Get VM IP for Ops Manager access
-VM_IP=$(hostname -I | awk '{print $1}')
 log_info "VM IP detected: ${VM_IP}"
 
-kind create cluster --name mongodb-cluster --config - <<EOF
+# Create kind cluster with port mappings for Ops Manager (8080) and MongoDB (27017)
+# Use different host ports to avoid conflicts if local services are running
+kind create cluster --name ${K8S_CLUSTER_NAME} --config - <<EOF
 kind: Cluster
 apiVersion: kind.x-k8s.io/v1alpha4
 nodes:
 - role: control-plane
   extraPortMappings:
-  - containerPort: 30000
+  - containerPort: 8080
     hostPort: 8080
+    listenAddress: "0.0.0.0"
     protocol: TCP
-  - containerPort: 30001
+  - containerPort: 27017
     hostPort: 27017
-    protocol: TCP
-  - containerPort: 30002
-    hostPort: 27018
-    protocol: TCP
-  - containerPort: 30003
-    hostPort: 8081
+    listenAddress: "0.0.0.0"
     protocol: TCP
 EOF
 
 log_info "Waiting for cluster to be ready..."
-kubectl wait --for=condition=Ready nodes --all --timeout=300s
+kubectl wait --for=condition=Ready node/${K8S_CLUSTER_NAME}-control-plane --timeout=300s
 log_success "Kubernetes cluster created and ready"
 
-# Step 3: Install MongoDB Kubernetes Operator
+# Step 3: Installing MongoDB Kubernetes Operator
 log_step "Step 3: Installing MongoDB Kubernetes Operator"
 log_info "Installing MongoDB Kubernetes Operator..."
 
-helm repo add mongodb https://mongodb.github.io/helm-charts 2>/dev/null || true
+helm repo add mongodb https://mongodb.github.io/helm-charts || true
 helm repo update
-
-helm install mongodb-kubernetes mongodb/mongodb-kubernetes \
-  --namespace ${NAMESPACE} \
-  --create-namespace \
-  --wait
+helm install mongodb-kubernetes mongodb/mongodb-kubernetes --namespace ${MONGODB_OPERATOR_NAMESPACE} --create-namespace --wait
 
 log_success "MongoDB Kubernetes Operator installed"
 
@@ -95,7 +78,7 @@ log_success "MongoDB Kubernetes Operator installed"
 log_step "Step 4: Deploying MongoDB Enterprise Advanced Database"
 log_info "Deploying MongoDB Enterprise Advanced database for Ops Manager..."
 
-kubectl create namespace ${OPS_MANAGER_NAMESPACE}
+kubectl create namespace ${OPS_MANAGER_NAMESPACE} || true
 kubectl apply -f - <<EOF
 apiVersion: apps/v1
 kind: Deployment
@@ -148,8 +131,63 @@ log_info "Waiting for MongoDB Enterprise Advanced database to be ready..."
 kubectl wait --for=condition=Available deployment/ops-manager-db -n ${OPS_MANAGER_NAMESPACE} --timeout=300s
 log_success "MongoDB Enterprise Advanced database deployed"
 
-# Step 5: Deploy Ops Manager Application
-log_step "Step 5: Deploying Ops Manager Application"
+# Step 5: Create Custom Ops Manager Configuration
+log_step "Step 5: Creating Custom Ops Manager Configuration"
+log_info "Creating custom mms.conf with correct MongoDB URI..."
+
+kubectl create configmap mms-config -n ${OPS_MANAGER_NAMESPACE} --from-literal=mms.conf="
+# MongoDB Ops Manager Configuration
+mongoUri=mongodb://admin:admin123@ops-manager-db-svc:27017/mms?authSource=admin
+
+# Log directory
+LOG_PATH=\"\${APP_DIR}/logs\"
+
+# Optionally run Ops Manager server as another user. Reminder, if changing MMS_USER,
+# make sure the ownership of the Ops Manager installation directory tree is also
+# updated to MMS_USER.
+MMS_USER=
+
+# JDK location (Note JRE not sufficient for JSPs, full JDK required)
+JAVA_HOME=\"\${APP_DIR}/jdk\"
+
+# The path to the encryption key used to safeguard data
+ENC_KEY_PATH=\${HOME}/.mongodb-mms/gen.key
+
+######################################################
+# Ops Manager Website
+######################################################
+# Port defaults. If changing this default port, you must also update the port
+# of 'mms.centralUrl' in conf/conf-mms.properties.
+BASE_PORT=8080
+BASE_SSL_PORT=8443
+
+# Shared between migrations, preflights, web server and backup daemon
+JAVA_MMS_COMMON_OPTS=\"\${JAVA_MMS_COMMON_OPTS} -Duser.timezone=GMT -Djavax.net.ssl.sessionCacheSize=1\"
+# Use /dev/urandom (unlimited and unblocking entropy source)
+JAVA_MMS_COMMON_OPTS=\"\${JAVA_MMS_COMMON_OPTS} -Djava.security.egd=file:/dev/urandom\"
+# Set snappy tmp folder to \${APP_DIR}/tmp so that backup doesn't require exec option enabled on /tmp by default
+JAVA_MMS_COMMON_OPTS=\"\${JAVA_MMS_COMMON_OPTS} -Dorg.xerial.snappy.tempdir=\${APP_DIR}/tmp\"
+# Include reference to basic fontconfig.properties file to enable font access with Adopt JDK
+JAVA_MMS_COMMON_OPTS=\"\${JAVA_MMS_COMMON_OPTS} -Dsun.awt.fontconfig=\${APP_DIR}/conf/fontconfig.properties\"
+
+# JVM configurations
+MMS_HEAP_SIZE=\${MMS_HEAP_SIZE:-8096}
+JAVA_MMS_UI_OPTS=\"\${JAVA_MMS_UI_OPTS} \${JAVA_MMS_COMMON_OPTS} -Xss512k -Xmx\${MMS_HEAP_SIZE}m -Xms\${MMS_HEAP_SIZE}m -XX:ReservedCodeCacheSize=128m -XX:-OmitStackTraceInFastThrow\"
+
+# Set snappy tmp folder to \${APP_DIR}/tmp so that ServerMain doesn't require exec option enabled on /tmp by default
+JAVA_MMS_UI_OPTS=\"\${JAVA_MMS_UI_OPTS} -Dorg.xerial.snappy.tempdir=\${APP_DIR}/tmp\"
+
+# A command to prefix the mongod binary. Depending on your production environment it
+# may be necessary to use \"numactl --interleave=all\" as the value.
+# For more details, see:
+# http://docs.mongodb.org/manual/administration/production-notes/#mongodb-on-numa-hardware
+JAVA_DAEMON_OPTS=\"\${JAVA_DAEMON_OPTS} \${JAVA_MMS_COMMON_OPTS} -DMONGO.BIN.PREFIX=\"
+" --dry-run=client -o yaml | kubectl apply -f -
+
+log_success "Custom Ops Manager configuration created"
+
+# Step 6: Deploy Ops Manager Application
+log_step "Step 6: Deploying Ops Manager Application"
 log_info "Creating Ops Manager encryption key..."
 kubectl create secret generic ops-manager-key -n ${OPS_MANAGER_NAMESPACE} --from-literal=encryption-key="$(openssl rand -base64 32)" --dry-run=client -o yaml | kubectl apply -f -
 
@@ -182,13 +220,13 @@ spec:
       labels:
         app: ops-manager
     spec:
+      securityContext:
+        runAsUser: 0 # Run as root for initial setup permissions
       containers:
       - name: ops-manager
         image: quay.io/mongodb/mongodb-enterprise-ops-manager-ubi:8.0.15
         command: ["/bin/sh"]
         args: ["-c", "/mongodb-ops-manager/bin/start-mongodb-mms --enc-key-path /data/encryption-key && sleep infinity"]
-        securityContext:
-          runAsUser: 0
         ports:
         - containerPort: 8080
         env:
@@ -206,6 +244,9 @@ spec:
         - name: encryption-key
           mountPath: /data/encryption-key
           subPath: encryption-key
+        - name: mms-config
+          mountPath: /mongodb-ops-manager/conf/mms.conf
+          subPath: mms.conf
         resources:
           requests:
             cpu: "1"
@@ -238,6 +279,9 @@ spec:
       - name: encryption-key
         secret:
           secretName: ops-manager-key
+      - name: mms-config
+        configMap:
+          name: mms-config
 ---
 apiVersion: v1
 kind: Service
@@ -257,72 +301,47 @@ log_info "Waiting for Ops Manager to be ready..."
 kubectl wait --for=condition=Available deployment/ops-manager -n ${OPS_MANAGER_NAMESPACE} --timeout=600s
 log_success "Ops Manager deployed"
 
-# Step 6: Get Ops Manager Access Information
-log_step "Step 6: Ops Manager Access Information"
+# Step 7: Get Ops Manager Access Information
+log_step "Step 7: Ops Manager Access Information"
 log_info "Getting Ops Manager access details..."
 
 OPS_MANAGER_PORT=$(kubectl get svc ops-manager-svc -n ${OPS_MANAGER_NAMESPACE} -o jsonpath='{.spec.ports[0].nodePort}')
 OPS_MANAGER_URL="http://${VM_IP}:${OPS_MANAGER_PORT}"
 
-echo ""
-echo "🎉 Ops Manager is now running!"
-echo ""
-echo "📋 Access Information:"
+echo -e "${GREEN}🎉 Ops Manager is running!${NC}"
+echo -e "${BLUE}📋 Access Information:${NC}"
 echo "   URL: ${OPS_MANAGER_URL}"
 echo "   VM IP: ${VM_IP}"
 echo "   Port: ${OPS_MANAGER_PORT}"
 echo ""
 
-# Step 7: Web UI Setup Instructions
-log_step "Step 7: Web UI Setup Instructions"
+# Step 8: Web UI Setup Instructions
+log_step "Step 8: Web UI Setup Instructions"
 echo -e "${YELLOW}"
 cat << "EOF"
 ╔══════════════════════════════════════════════════════════════╗
 ║              Ops Manager Web UI Setup Required             ║
 ╚══════════════════════════════════════════════════════════════╝
+Please open the Ops Manager URL in your browser and complete the initial setup:
 
-Please complete the following steps in Ops Manager:
+1.  **Open Ops Manager**: Go to the URL provided above (e.g., http://10.128.0.10:30856)
+2.  **Sign Up**: Create the first admin user for Ops Manager.
+3.  **Create Organization**: Name it "MongoDB Search Demo".
+4.  **Create Project**: Name it "Search Project".
+5.  **Generate API Keys**:
+    - Navigate to Project Settings → Access Manager → API Keys.
+    - Generate a new API Key (Public and Private Key).
+6.  **Add VM IP to API Access List**:
+    - In the same API Keys section, ensure your VM's public IP address (${VM_IP}) is added to the API Access List. This is crucial for the Kubernetes Operator to communicate with Ops Manager.
+7.  **Save Credentials**: Keep the Organization ID, Project ID, Public API Key, and Private API Key safe. You will need these for Phase 2.
 
-1. Open Ops Manager in your browser:
-   http://YOUR_VM_IP:8080
-
-2. Click "Sign Up" to register the first user
-
-3. Create your first organization:
-   - Organization Name: "MongoDB Search Demo"
-   - Note the Organization ID (you'll need this)
-
-4. Create your first project:
-   - Project Name: "Search Project"
-   - Note the Project ID (you'll need this)
-
-5. Go to Project Settings → Access Manager → API Keys
-
-6. Create a new API Key:
-   - Description: "Kubernetes Operator"
-   - Role: "Project Owner"
-   - Note the Public Key and Private Key (you'll need these)
-
-7. Add your VM IP to API Access List:
-   - Go to Organization Settings → API Access List
-   - Add your VM IP address
-
-8. Save these credentials for Phase 2:
-   - Organization ID: [COPY THIS]
-   - Project ID: [COPY THIS]
-   - Public API Key: [COPY THIS]
-   - Private API Key: [COPY THIS]
-
-Once you have these credentials, run:
-   ./deploy-phase2-mongodb-enterprise.sh
-
+Once you have completed the web UI setup and saved your credentials, you can proceed to Phase 2.
 EOF
 echo -e "${NC}"
+log_success "Phase 1 (Ops Manager) deployment complete. Proceed with Web UI setup."
+EOF
 
-log_success "Phase 1 complete! Ops Manager is running and ready for setup."
-echo ""
-echo "🔗 Next Steps:"
-echo "   1. Complete the web UI setup above"
-echo "   2. Save your credentials"
-echo "   3. Run Phase 2: ./deploy-phase2-mongodb-enterprise.sh"
-echo ""
+# Make the script executable
+chmod +x deploy-phase1-ops-manager.sh
+
+log_success "Phase 1 script updated with MongoDB URI configuration fix"
