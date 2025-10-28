@@ -168,11 +168,11 @@ CONF_FILE="/opt/mongodb/mms/conf/conf-mms.properties"
 log_info "Updating ${CONF_FILE}..."
 
 # Backup original
-cp ${CONF_FILE} ${CONF_FILE}.backup
+sudo cp ${CONF_FILE} ${CONF_FILE}.backup
 
 # Update MongoDB URI
-sed -i "s|mongo.mongoUri=.*|mongo.mongoUri=mongodb://admin:admin123@${MONGODB_IP}:27017/mms?authSource=admin|g" ${CONF_FILE}
-sed -i "s|mongo.ssl=.*|mongo.ssl=false|g" ${CONF_FILE}
+sudo sed -i "s|mongo.mongoUri=.*|mongo.mongoUri=mongodb://admin:admin123@${MONGODB_IP}:27017/mms?authSource=admin|g" ${CONF_FILE}
+sudo sed -i "s|mongo.ssl=.*|mongo.ssl=false|g" ${CONF_FILE}
 
 log_success "Ops Manager configuration updated"
 
