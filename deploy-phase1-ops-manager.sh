@@ -271,9 +271,7 @@ spec:
       - name: ops-manager
         image: quay.io/mongodb/mongodb-enterprise-ops-manager-ubi:8.0.15
         command: ["/bin/sh"]
-        args: ["-c", "export MMS_MONGODB_URI=mongodb://admin:admin123@ops-manager-db-svc:27017/mms?authSource=admin && /mongodb-ops-manager/bin/start-mongodb-mms --enc-key-path /data/encryption-key && sleep infinity"]        
-        ports:
-        - containerPort: 8080
+        args: ["-c", "/mongodb-ops-manager/bin/start-mongodb-mms --enc-key-path /data/encryption-key && sleep infinity"]        - containerPort: 8080
         env:
         - name: MMS_INITDB_ROOT_USERNAME
           value: "admin"
@@ -281,14 +279,18 @@ spec:
           value: "admin123"
         - name: MMS_INITDB_DATABASE
           value: "mms"
-        - name: MMS_MONGODB_URI
-          value: "mongodb://admin:admin123@ops-manager-db-svc:27017/mms?authSource=admin"
         volumeMounts:
         - name: ops-manager-data
           mountPath: /data
         - name: encryption-key
           mountPath: /data/encryption-key
           subPath: encryption-key
+        - name: mms-config
+          mountPath: /mongodb-ops-manager/conf/mms.conf
+          subPath: mms.conf
+        - name: conf-mms-properties
+          mountPath: /mongodb-ops-manager/conf/conf-mms.properties
+          subPath: conf-mms.properties
         resources:
           requests:
             cpu: "1"
