@@ -271,7 +271,7 @@ spec:
       - name: ops-manager
         image: quay.io/mongodb/mongodb-enterprise-ops-manager-ubi:8.0.15
         command: ["/bin/sh"]
-        args: ["-c", "/mongodb-ops-manager/bin/start-mongodb-mms --enc-key-path /data/encryption-key && sleep infinity"]        
+        args: ["-c", "cd /mongodb-ops-manager && ./bin/start.sh && sleep infinity"]
         ports:
         - containerPort: 8080
         env:
