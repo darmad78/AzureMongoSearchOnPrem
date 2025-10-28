@@ -1,3 +1,5 @@
+# Update the script to include the conf-mms.properties fix
+cat > deploy-phase1-ops-manager.sh << 'EOF'
 #!/bin/bash
 set -e
 
@@ -42,7 +44,8 @@ log_success "kubectl is connected to Kubernetes cluster"
 
 # Step 2: Install MongoDB Enterprise Operator ONLY
 log_step "Step 2: Installing MongoDB Enterprise Operator"
-log_info "Adding MongoDB Helm repository..."
+log_info "Cleaning existing MongoDB operator installations..."
+
 # Uninstall existing operators
 helm uninstall mongodb-kubernetes -n mongodb 2>/dev/null || true
 helm uninstall mongodb-kubernetes -n mongodb-enterprise-operator 2>/dev/null || true
@@ -51,16 +54,17 @@ helm uninstall mongodb-kubernetes -n mongodb-enterprise-operator 2>/dev/null || 
 kubectl delete namespace mongodb-enterprise-operator 2>/dev/null || true
 
 log_info "Adding MongoDB Helm repository..."
+
 helm repo add mongodb https://mongodb.github.io/helm-charts
 helm repo update
 
-log_info "Installing MongoDB Enterprise Operator..."
+log_info "Installing MongoDB Kubernetes Operator..."
 helm install mongodb-kubernetes mongodb/mongodb-kubernetes \
     --namespace mongodb-enterprise-operator \
     --create-namespace \
     --wait
 
-log_success "MongoDB Enterprise Operator installed"
+log_success "MongoDB Kubernetes Operator installed"
 
 # Step 3: Deploy MongoDB Enterprise Advanced Database
 log_step "Step 3: Deploying MongoDB Enterprise Advanced Database"
@@ -186,11 +190,18 @@ else
     log_error "Failed to create mms-config ConfigMap"
     exit 1
 fi
-# Step 4.5: Fix conf-mms.properties MongoDB URI
-log_step "Step 4.5: Fixing conf-mms.properties MongoDB URI"
-log_info "Updating conf-mms.properties to use correct MongoDB URI..."
 
-# Create a ConfigMap with the corrected conf-mms.properties
+# Step 4.5: Create conf-mms.properties ConfigMap
+log_step "Step 4.5: Creating conf-mms.properties Configuration"
+log_info "Creating conf-mms.properties with correct MongoDB URI..."
+
+# Check if conf-mms-properties already exists and delete it
+if kubectl get configmap conf-mms-properties -n ${OPS_MANAGER_NAMESPACE} &> /dev/null; then
+    log_info "Removing existing conf-mms-properties ConfigMap..."
+    kubectl delete configmap conf-mms-properties -n ${OPS_MANAGER_NAMESPACE}
+fi
+
+# Create the conf-mms-properties ConfigMap
 kubectl create configmap conf-mms-properties -n ${OPS_MANAGER_NAMESPACE} --from-literal=conf-mms.properties="
 # Ops Manager MongoDB storage settings
 # The following MongoURI parameters are for configuring the MongoDB storage
@@ -212,9 +223,16 @@ mongodb.ssl.PEMKeyFilePassword=
 # mms.kerberos.principal: The principal we used to authenticate with MongoDB. This should be the exact same user
 # on the mongoUri above.
 # See https://docs.opsmanager.mongodb.com/current/reference/configuration/
-" --dry-run=client -o yaml | kubectl apply -f -
+"
 
-log_success "conf-mms.properties configuration created"
+# Verify the ConfigMap was created successfully
+if kubectl get configmap conf-mms-properties -n ${OPS_MANAGER_NAMESPACE} &> /dev/null; then
+    log_success "conf-mms.properties configuration created"
+else
+    log_error "Failed to create conf-mms-properties ConfigMap"
+    exit 1
+fi
+
 # Step 5: Deploy Ops Manager Application
 log_step "Step 5: Deploying Ops Manager Application"
 log_info "Creating Ops Manager encryption key..."
@@ -250,7 +268,7 @@ spec:
         app: ops-manager
     spec:
       securityContext:
-        runAsUser: 0 # Run as root for initial setup permissions
+        runAsUser: 0
       containers:
       - name: ops-manager
         image: quay.io/mongodb/mongodb-enterprise-ops-manager-ubi:8.0.15
@@ -276,6 +294,9 @@ spec:
         - name: mms-config
           mountPath: /mongodb-ops-manager/conf/mms.conf
           subPath: mms.conf
+        - name: conf-mms-properties
+          mountPath: /mongodb-ops-manager/conf/conf-mms.properties
+          subPath: conf-mms.properties
         resources:
           requests:
             cpu: "1"
@@ -311,6 +332,9 @@ spec:
       - name: mms-config
         configMap:
           name: mms-config
+      - name: conf-mms-properties
+        configMap:
+          name: conf-mms-properties
 ---
 apiVersion: v1
 kind: Service
@@ -345,6 +369,13 @@ if kubectl exec -n ${OPS_MANAGER_NAMESPACE} -l app=ops-manager -- ls /mongodb-op
     log_success "mms.conf is properly mounted"
 else
     log_warning "mms.conf may not be mounted correctly"
+fi
+
+# Check if conf-mms.properties is properly mounted
+if kubectl exec -n ${OPS_MANAGER_NAMESPACE} -l app=ops-manager -- ls /mongodb-ops-manager/conf/conf-mms.properties &> /dev/null; then
+    log_success "conf-mms.properties is properly mounted"
+else
+    log_warning "conf-mms.properties may not be mounted correctly"
 fi
 
 # Check Ops Manager logs for any errors
@@ -400,4 +431,4 @@ EOF
 # Make the script executable
 chmod +x deploy-phase1-ops-manager.sh
 
-log_success "Phase 1 script updated - NO COMMUNITY, ENTERPRISE ONLY!"
+log_success "Phase 1 script updated with conf-mms.properties fix"
