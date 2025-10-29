@@ -304,6 +304,16 @@ echo "   • Or add range: 192.168.49.0/24"
 echo ""
 read -p "Press Enter after adding the IP to the access list..."
 
+# Download and install MongoDB version for Ops Manager
+log_info "Downloading MongoDB Enterprise 8.0.15 for Ops Manager..."
+curl -LO https://fastdl.mongodb.org/linux/mongodb-linux-x86_64-enterprise-ubuntu2204-8.0.15.tgz
+
+log_info "Installing MongoDB version in Ops Manager..."
+sudo mv mongodb-linux-x86_64-enterprise-ubuntu2204-8.0.15.tgz /opt/mongodb/mms/mongodb-releases/
+sudo chown mongodb-mms:mongodb-mms /opt/mongodb/mms/mongodb-releases/mongodb-linux-x86_64-enterprise-ubuntu2204-8.0.15.tgz
+
+log_success "MongoDB version installed in Ops Manager"
+
 # Step 3: Create Namespace
 log_step "Step 3: Creating MongoDB Namespace"
 log_info "Creating mongodb namespace..."
