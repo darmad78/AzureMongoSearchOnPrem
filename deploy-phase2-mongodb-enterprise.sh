@@ -167,28 +167,29 @@ spec:
   members: 3
   version: ${MDB_VERSION}
   type: ReplicaSet
+  credentials: om-credentials
   opsManager:
     configMapRef:
       name: om-project
-  credentials: om-credentials
   security:
     authentication:
       enabled: true
       ignoreUnknownUsers: true
       modes:
       - SCRAM
-  podSpec:
-    podTemplate:
-      spec:
-        containers:
-        - name: mongodb-enterprise-database
-          resources:
-            limits:
-              cpu: "2"
-              memory: 2Gi
-            requests:
-              cpu: "1"
-              memory: 1Gi
+  statefulSet:
+    spec:
+      template:
+        spec:
+          containers:
+          - name: mongodb-enterprise-database
+            resources:
+              limits:
+                cpu: "2"
+                memory: 2Gi
+              requests:
+                cpu: "1"
+                memory: 1Gi
 EOF
 
 log_info "Waiting for MongoDB resource to reach Running phase..."
