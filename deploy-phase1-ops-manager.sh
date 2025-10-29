@@ -27,19 +27,54 @@ echo -e "╚══════════════════════�
 echo "VM IP: ${VM_IP}"
 echo ""
 
-# Step 1: Verify Prerequisites
-log_step "Step 1: Verifying Prerequisites"
+# Step 1: Setup Kubernetes Cluster
+log_step "Step 1: Setting up Kubernetes Cluster"
 log_info "Checking kubectl connectivity..."
 
 if ! kubectl cluster-info &> /dev/null; then
-    log_error "kubectl is not connected to a Kubernetes cluster"
-    exit 1
+    log_warning "kubectl is not connected to a Kubernetes cluster"
+    log_info "Setting up minikube cluster..."
+    
+    # Check if minikube is installed
+    if ! command -v minikube &> /dev/null; then
+        log_error "minikube is not installed. Please install minikube first."
+        log_info "Visit: https://minikube.sigs.k8s.io/docs/start/"
+        exit 1
+    fi
+    
+    # Check if Docker is running
+    if ! docker info &> /dev/null; then
+        log_error "Docker is not running. Please start Docker first."
+        exit 1
+    fi
+    
+    # Start minikube with sufficient resources
+    log_info "Starting minikube cluster..."
+    minikube start --driver=docker --memory=8192 --cpus=4
+    
+    # Enable required addons
+    log_info "Enabling minikube addons..."
+    minikube addons enable metrics-server
+    minikube addons enable ingress
+    
+    # Set kubectl context
+    kubectl config use-context minikube
+    
+    log_success "minikube cluster started successfully"
+else
+    log_success "kubectl is connected to existing Kubernetes cluster"
 fi
-
-log_success "kubectl is connected to Kubernetes cluster"
 
 # Step 2: Install MongoDB Enterprise Operator
 log_step "Step 2: Installing MongoDB Enterprise Operator"
+
+# Check if Helm is installed
+if ! command -v helm &> /dev/null; then
+    log_error "Helm is not installed. Please install Helm first."
+    log_info "Visit: https://helm.sh/docs/intro/install/"
+    exit 1
+fi
+
 log_info "Cleaning existing MongoDB operator installations..."
 
 helm uninstall mongodb-kubernetes -n mongodb 2>/dev/null || true
