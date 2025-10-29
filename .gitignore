@@ -118,3 +118,6 @@ mms-data/
 
 # Deployment-specific overrides
 docker-compose.override.yml
+
+# Allow MongoDB binaries in opsmanagerfiles directory
+!backend/opsmanagerfiles/*.tgz
