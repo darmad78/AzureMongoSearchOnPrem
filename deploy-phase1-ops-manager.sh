@@ -118,7 +118,7 @@ helm repo add mongodb https://mongodb.github.io/helm-charts
 helm repo update
 
 log_info "Installing MongoDB Enterprise Kubernetes Operator..."
-helm install mongodb-enterprise-operator mongodb/mongodb-enterprise-operator \
+helm install mongodb-enterprise-operator mongodb/enterprise-operator \
     --namespace mongodb-enterprise-operator \
     --create-namespace \
     --wait
