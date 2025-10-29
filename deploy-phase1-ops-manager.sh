@@ -11,9 +11,9 @@ YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
 NC='\033[0m'
 
-log_info() { echo -e "${BLUE}ℹ️  $1${NC}"; }
+log_info() { echo -e "${BLUE}ℹ️  $1${NC}"; }
 log_success() { echo -e "${GREEN}✅ $1${NC}"; }
-log_warning() { echo -e "${YELLOW}⚠️  $1${NC}"; }
+log_warning() { echo -e "${YELLOW}⚠️  $1${NC}"; }
 log_error() { echo -e "${RED}❌ $1${NC}"; }
 log_step() { echo -e "\n${YELLOW}🚀 $1${NC}\n=================================================="; }
 
@@ -22,7 +22,7 @@ OPS_MANAGER_NAMESPACE="ops-manager"
 VM_IP=$(hostname -I | awk '{print $1}')
 
 echo -e "╔══════════════════════════════════════════════════════════════╗"
-echo -e "║                    Phase 1: Ops Manager Setup              ║"
+echo -e "║                    Phase 1: Ops Manager Setup              ║"
 echo -e "╚══════════════════════════════════════════════════════════════╝"
 echo "VM IP: ${VM_IP}"
 echo ""
@@ -32,8 +32,8 @@ log_step "Step 1: Verifying Prerequisites"
 log_info "Checking kubectl connectivity..."
 
 if ! kubectl cluster-info &> /dev/null; then
-    log_error "kubectl is not connected to a Kubernetes cluster"
-    exit 1
+    log_error "kubectl is not connected to a Kubernetes cluster"
+    exit 1
 fi
 
 log_success "kubectl is connected to Kubernetes cluster"
@@ -52,9 +52,9 @@ helm repo update
 
 log_info "Installing MongoDB Kubernetes Operator..."
 helm install mongodb-kubernetes mongodb/mongodb-kubernetes \
-    --namespace mongodb-enterprise-operator \
-    --create-namespace \
-    --wait
+    --namespace mongodb-enterprise-operator \
+    --create-namespace \
+    --wait
 
 log_success "MongoDB Kubernetes Operator installed"
 
@@ -68,67 +68,67 @@ kubectl apply -f - <<EOF
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
-  name: ops-manager-appdb-pvc
-  namespace: ${OPS_MANAGER_NAMESPACE}
+  name: ops-manager-appdb-pvc
+  namespace: ${OPS_MANAGER_NAMESPACE}
 spec:
-  accessModes:
-    - ReadWriteOnce
-  resources:
-    requests:
-      storage: 50Gi
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 50Gi
 ---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: ops-manager-appdb
-  namespace: ${OPS_MANAGER_NAMESPACE}
+  name: ops-manager-appdb
+  namespace: ${OPS_MANAGER_NAMESPACE}
 spec:
-  replicas: 1
-  selector:
-    matchLabels:
-      app: ops-manager-appdb
-  template:
-    metadata:
-      labels:
-        app: ops-manager-appdb
-    spec:
-      containers:
-      - name: mongodb
-        image: mongo:8.0
-        ports:
-        - containerPort: 27017
-        env:
-        - name: MONGO_INITDB_ROOT_USERNAME
-          value: "admin"
-        - name: MONGO_INITDB_ROOT_PASSWORD
-          value: "admin123"
-        volumeMounts:
-        - name: appdb-data
-          mountPath: /data/db
-        resources:
-          requests:
-            cpu: "1"
-            memory: "4Gi"
-          limits:
-            cpu: "2"
-            memory: "8Gi"
-      volumes:
-      - name: appdb-data
-        persistentVolumeClaim:
-          claimName: ops-manager-appdb-pvc
+  replicas: 1
+  selector:
+    matchLabels:
+      app: ops-manager-appdb
+  template:
+    metadata:
+      labels:
+        app: ops-manager-appdb
+    spec:
+      containers:
+      - name: mongodb
+        image: mongo:8.0
+        ports:
+        - containerPort: 27017
+        env:
+        - name: MONGO_INITDB_ROOT_USERNAME
+          value: "admin"
+        - name: MONGO_INITDB_ROOT_PASSWORD
+          value: "admin123"
+        volumeMounts:
+        - name: appdb-data
+          mountPath: /data/db
+        resources:
+          requests:
+            cpu: "1"
+            memory: "4Gi"
+          limits:
+            cpu: "2"
+            memory: "8Gi"
+      volumes:
+      - name: appdb-data
+        persistentVolumeClaim:
+          claimName: ops-manager-appdb-pvc
 ---
 apiVersion: v1
 kind: Service
 metadata:
-  name: ops-manager-appdb-svc
-  namespace: ${OPS_MANAGER_NAMESPACE}
+  name: ops-manager-appdb-svc
+  namespace: ${OPS_MANAGER_NAMESPACE}
 spec:
-  selector:
-    app: ops-manager-appdb
-  ports:
-  - port: 27017
-    targetPort: 27017
-  type: ClusterIP
+  selector:
+    app: ops-manager-appdb
+  ports:
+  - port: 27017
+    targetPort: 27017
+  type: ClusterIP
 EOF
 
 log_info "Waiting for MongoDB Application Database to be ready..."
@@ -149,7 +149,7 @@ NODE_IP=$(kubectl get nodes -o jsonpath='{.items[0].status.addresses[?(@.type=="
 
 # If ExternalIP not found, use InternalIP
 if [ -z "$NODE_IP" ]; then
-  NODE_IP=$(kubectl get nodes -o jsonpath='{.items[0].status.addresses[?(@.type=="InternalIP")].address}')
+  NODE_IP=$(kubectl get nodes -o jsonpath='{.items[0].status.addresses[?(@.type=="InternalIP")].address}')
 fi
 
 log_success "MongoDB accessible at: $NODE_IP:$NODE_PORT"
@@ -159,9 +159,9 @@ log_step "Step 5: Installing Ops Manager on VM"
 
 # Check if already installed and remove
 if dpkg -l 2>/dev/null | grep -q mongodb-mms; then
-    log_warning "Ops Manager already installed, removing old version..."
-    sudo dpkg -r mongodb-mms || true
-    sudo apt-get autoremove -y
+    log_warning "Ops Manager already installed, removing old version..."
+    sudo dpkg -r mongodb-mms || true
+    sudo apt-get autoremove -y
 fi
 
 log_info "Installing prerequisites..."
@@ -192,7 +192,7 @@ sudo sed -i "s|mongo.mongoUri=.*|mongo.mongoUri=mongodb://admin:admin123@$NODE_I
 sudo sed -i "s|mongo.ssl=.*|mongo.ssl=false|g" ${CONF_FILE}
 
 # Use port 9000 instead of 8080 (K8s uses 8080 for NodePort)
-log_info "Configuring Ops Manager to use port 9000 (K8s uses 8080)..."
+log_info "Configuring Ops Manager to use port 9000..."
 sudo sed -i 's/-Dbase-port=8080/-Dbase-port=9000/g' /opt/mongodb/mms/bin/mongodb-mms
 sudo sed -i 's/base-port=8080/base-port=9000/g' /opt/mongodb/mms/bin/mongodb-mms-backup-daemon
 echo "mms.listen.http.port=9000" | sudo tee -a ${CONF_FILE}
@@ -208,23 +208,23 @@ log_success "Migration logs cleared"
 # Step 8: Start Ops Manager
 log_step "Step 8: Starting Ops Manager Service"
 
-# Kill any existing process on port 8080 (including Docker)
-log_info "Checking for processes on port 8080..."
-PID=$(sudo lsof -ti :8080 2>/dev/null || true)
+# Kill any existing process on port 9000 (including Docker)
+log_info "Checking for processes on port 9000..."
+PID=$(sudo lsof -ti :9000 2>/dev/null || true) # FIX: Changed 8080 to 9000
 if [ ! -z "$PID" ]; then
-    log_warning "Found process(es) on port 8080, stopping them..."
-    # Try to stop Docker container gracefully first
-    CONTAINER=$(sudo docker ps 2>/dev/null | grep 8080 | awk '{print $1}' || true)
-    if [ ! -z "$CONTAINER" ]; then
-        log_info "Stopping Docker container: $CONTAINER"
-        sudo docker stop $CONTAINER 2>/dev/null || true
-        sleep 2
-    fi
-    # Kill any remaining processes
-    for p in $PID; do
-        sudo kill -9 $p 2>/dev/null || true
-    done
-    sleep 2
+    log_warning "Found process(es) on port 9000, stopping them..."
+    # Try to stop Docker container gracefully first
+    CONTAINER=$(sudo docker ps 2>/dev/null | grep 9000 | awk '{print $1}' || true) # FIX: Changed 8080 to 9000
+    if [ ! -z "$CONTAINER" ]; then
+        log_info "Stopping Docker container: $CONTAINER"
+        sudo docker stop $CONTAINER 2>/dev/null || true
+        sleep 2
+    fi
+    # Kill any remaining processes
+    for p in $PID; do
+        sudo kill -9 $p 2>/dev/null || true
+    done
+    sleep 2
 fi
 
 log_info "Starting mongodb-mms service..."
@@ -232,20 +232,20 @@ sudo service mongodb-mms start
 
 log_info "Waiting for Ops Manager to initialize (3 minutes)..."
 for i in {1..36}; do
-    sleep 5
-    if curl -s http://localhost:8080 > /dev/null 2>&1; then
-        log_success "Ops Manager is responding!"
-        break
-    fi
-    echo -ne "."
+    sleep 5
+    if curl -s http://localhost:9000 > /dev/null 2>&1; then # FIX: Changed 8080 to 9000
+        log_success "Ops Manager is responding!"
+        break
+    fi
+    echo -ne "."
 done
 echo ""
 
 if sudo service mongodb-mms status | grep -q running; then
-    log_success "Ops Manager service running"
+    log_success "Ops Manager service running"
 else
-    log_warning "Ops Manager service exited, checking logs..."
-    sudo tail -20 /opt/mongodb/mms/logs/mms0.log
+    log_warning "Ops Manager service exited, checking logs..."
+    sudo tail -20 /opt/mongodb/mms/logs/mms-migration.log
 fi
 
 # Step 9: Verify Deployment
@@ -255,28 +255,28 @@ log_info "Checking Ops Manager status..."
 sudo service mongodb-mms status --no-pager || true
 
 log_info "Testing Ops Manager connectivity..."
-if curl -s http://localhost:8080 > /dev/null 2>&1; then
-    log_success "Ops Manager is accessible"
+if curl -s http://localhost:9000 > /dev/null 2>&1; then # FIX: Changed 8080 to 9000
+    log_success "Ops Manager is accessible"
 else
-    log_warning "Ops Manager not yet responding, still initializing..."
-    log_info "Check status in 1-2 minutes with: curl http://localhost:8080"
+    log_warning "Ops Manager not yet responding, still initializing..."
+    log_info "Check status in 1-2 minutes with: curl http://localhost:9000" # FIX: Changed 8080 to 9000
 fi
 
 # Step 10: Get Access Information
 log_step "Step 10: Ops Manager Access Information"
 
-OPS_MANAGER_URL="http://${VM_IP}:8080"
+OPS_MANAGER_URL="http://${VM_IP}:9000" # FIX: Changed 8080 to 9000
 
 echo -e "${GREEN}🎉 Ops Manager setup complete!${NC}"
 echo -e "${BLUE}📋 Access Information:${NC}"
-echo "   URL: ${OPS_MANAGER_URL}"
-echo "   VM IP: ${VM_IP}"
-echo "   Port: 8080"
+echo "   URL: ${OPS_MANAGER_URL}"
+echo "   VM IP: ${VM_IP}"
+echo "   Port: 9000" # FIX: Changed 8080 to 9000
 echo ""
 echo -e "${BLUE}📋 MongoDB Backend Information:${NC}"
-echo "   Accessible at: $NODE_IP:$NODE_PORT"
-echo "   Username: admin"
-echo "   Password: admin123"
+echo "   Accessible at: $NODE_IP:$NODE_PORT"
+echo "   Username: admin"
+echo "   Password: admin123"
 echo ""
 
 # Step 11: Web UI Setup Instructions
@@ -284,47 +284,48 @@ log_step "Step 11: Complete Web UI Setup"
 echo -e "${YELLOW}"
 cat << "EOF"
 ╔══════════════════════════════════════════════════════════════╗
-║              Ops Manager Web UI Setup Required             ║
+║              Ops Manager Web UI Setup Required             ║
 ╚══════════════════════════════════════════════════════════════╝
 
 Please open the Ops Manager URL in your browser and complete:
 
-1.  **Open Ops Manager**: Navigate to the URL above
-    (Wait 1-2 minutes if not loading - migration is completing)
+1.  **Open Ops Manager**: Navigate to the URL above
+    (Wait 1-2 minutes if not loading - migration is completing)
 
-2.  **Sign Up**: Create the first admin user
+2.  **Sign Up**: Create the first admin user
 
-3.  **Create Organization**: Name it "MongoDB Search Demo"
+3.  **Create Organization**: Name it "MongoDB Search Demo"
 
-4.  **Create Project**: Name it "Search Project"
+4.  **Create Project**: Name it "Search Project"
 
-5.  **Configure Settings**: 
-    - Set Base URL to http://<VM_IP>:8080
+5.  **Configure Settings**: 
+    - Set Base URL to http://<VM_IP>:9000
 
-6.  **Generate API Keys**: 
-    - Go to Project Settings → Access Manager → API Keys
-    - Generate new API Key (Public and Private)
+6.  **Generate API Keys**: 
+    - Go to Project Settings → Access Manager → API Keys
+    - Generate new API Key (Public and Private)
 
-7.  **Add VM IP to API Access List**: 
-    - Add your VM's IP to allow communication
+7.  **Add VM IP to API Access List**: 
+    - Add your VM's IP to allow communication
 
-8.  **Save Credentials**: 
-    - Keep Organization ID, Project ID, and API Keys for Phase 2
+8.  **Save Credentials**: 
+    - Keep Organization ID, Project ID, and API Keys for Phase 2
 
 Useful Commands:
-  Check service status:
-    sudo service mongodb-mms status
+  Check service status:
+    sudo service mongodb-mms status
 
-  View migration logs:
-    sudo tail -f /opt/mongodb/mms/logs/mms-migration.log
+  View migration logs:
+    sudo tail -f /opt/mongodb/mms/logs/mms-migration.log
 
-  View application logs:
-    sudo tail -f /opt/mongodb/mms/logs/mms.log
+  View application logs:
+    sudo tail -f /opt/mongodb/mms/logs/mms.log
 
-  Test connectivity:
-    curl http://localhost:8080
+  Test connectivity:
+    curl http://localhost:9000
 
 EOF
+# FIX: Changed all 8080 references in heredoc to 9000
 echo -e "${NC}"
 
 log_success "Phase 1 deployment complete!"
