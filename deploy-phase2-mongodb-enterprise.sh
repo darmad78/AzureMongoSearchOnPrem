@@ -291,6 +291,19 @@ fi
 
 log_success "Credentials collected"
 
+# Check IP Access List
+log_info "Checking Ops Manager IP Access List..."
+MINIKUBE_NODE_IP=$(kubectl get nodes -o jsonpath='{.items[0].status.addresses[?(@.type=="InternalIP")].address}')
+log_warning "IMPORTANT: Ensure Ops Manager IP Access List includes the minikube node IP"
+echo ""
+echo "📋 Add this IP to Ops Manager IP Access List:"
+echo "   • Go to Ops Manager: http://${VM_IP}:8080"
+echo "   • Organization Settings → Access Manager → IP Access List"
+echo "   • Add IP: ${MINIKUBE_NODE_IP}/32"
+echo "   • Or add range: 192.168.49.0/24"
+echo ""
+read -p "Press Enter after adding the IP to the access list..."
+
 # Step 3: Create Namespace
 log_step "Step 3: Creating MongoDB Namespace"
 log_info "Creating mongodb namespace..."
