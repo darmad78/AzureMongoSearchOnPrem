@@ -55,6 +55,22 @@ helm install mongodb-enterprise-operator mongodb/enterprise-operator \
 
 log_success "MongoDB Enterprise Operator installed successfully"
 
+# Fix WATCH_NAMESPACE to watch all namespaces
+log_info "Fixing WATCH_NAMESPACE to watch all namespaces..."
+kubectl patch deployment mongodb-enterprise-operator -n mongodb-enterprise-operator --type='json' -p='[{"op": "replace", "path": "/spec/template/spec/containers/0/env/4/value", "value": ""}, {"op": "remove", "path": "/spec/template/spec/containers/0/env/4/valueFrom"}]' || {
+    log_warning "JSON patch failed, using alternative method..."
+    # Alternative: Use sed to modify the deployment
+    kubectl get deployment mongodb-enterprise-operator -n mongodb-enterprise-operator -o yaml | \
+    sed 's/valueFrom:/value: ""\n    # valueFrom:/g' | \
+    sed '/# valueFrom:/,/fieldPath: metadata.namespace/d' | \
+    kubectl apply -f -
+}
+
+log_info "Waiting for operator to restart with new configuration..."
+kubectl rollout status deployment/mongodb-enterprise-operator -n mongodb-enterprise-operator --timeout=120s
+
+log_success "MongoDB Enterprise Operator configured to watch all namespaces"
+
 # Step 2: Get Ops Manager Credentials
 log_step "Step 2: Getting Ops Manager Credentials"
 echo -e "${YELLOW}"
