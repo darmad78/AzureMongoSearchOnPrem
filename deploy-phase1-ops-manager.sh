@@ -29,6 +29,24 @@ echo ""
 
 # Step 1: Setup Kubernetes Cluster
 log_step "Step 1: Setting up Kubernetes Cluster"
+
+# Check if kubectl is installed
+if ! command -v kubectl &> /dev/null; then
+    log_warning "kubectl is not installed. Installing kubectl..."
+    
+    # Install kubectl
+    log_info "Downloading kubectl..."
+    curl -LO "https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl"
+    
+    log_info "Installing kubectl..."
+    sudo install -o root -g root -m 0755 kubectl /usr/local/bin/kubectl
+    
+    # Clean up
+    rm kubectl
+    
+    log_success "kubectl installed successfully"
+fi
+
 log_info "Checking kubectl connectivity..."
 
 if ! kubectl cluster-info &> /dev/null; then
@@ -37,9 +55,19 @@ if ! kubectl cluster-info &> /dev/null; then
     
     # Check if minikube is installed
     if ! command -v minikube &> /dev/null; then
-        log_error "minikube is not installed. Please install minikube first."
-        log_info "Visit: https://minikube.sigs.k8s.io/docs/start/"
-        exit 1
+        log_warning "minikube is not installed. Installing minikube..."
+        
+        # Install minikube
+        log_info "Downloading minikube..."
+        curl -LO https://storage.googleapis.com/minikube/releases/latest/minikube-linux-amd64
+        
+        log_info "Installing minikube..."
+        sudo install minikube-linux-amd64 /usr/local/bin/minikube
+        
+        # Clean up
+        rm minikube-linux-amd64
+        
+        log_success "minikube installed successfully"
     fi
     
     # Check if Docker is running
@@ -70,9 +98,13 @@ log_step "Step 2: Installing MongoDB Enterprise Operator"
 
 # Check if Helm is installed
 if ! command -v helm &> /dev/null; then
-    log_error "Helm is not installed. Please install Helm first."
-    log_info "Visit: https://helm.sh/docs/intro/install/"
-    exit 1
+    log_warning "Helm is not installed. Installing Helm..."
+    
+    # Install Helm
+    log_info "Downloading Helm..."
+    curl https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
+    
+    log_success "Helm installed successfully"
 fi
 
 log_info "Cleaning existing MongoDB operator installations..."
