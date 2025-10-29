@@ -163,8 +163,6 @@ spec:
       ignoreUnknownUsers: true
       modes:
       - SCRAM
-  agent:
-    logLevel: INFO
   clusterSpecList:
     clusterSpecs:
     - clusterName: ${MDB_RESOURCE_NAME}
