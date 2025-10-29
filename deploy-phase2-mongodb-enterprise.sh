@@ -364,13 +364,28 @@ else
     log_warning "Ops Manager config file not found. Please check manually."
 fi
 
-# Download and install MongoDB version for Ops Manager
-log_info "Downloading MongoDB Enterprise 8.0.15 for RHEL 8 (Ops Manager server)..."
-curl -LO https://fastdl.mongodb.org/linux/mongodb-linux-x86_64-enterprise-rhel80-8.0.15.tgz
+# Install MongoDB version from repository
+log_info "Installing MongoDB Enterprise 8.0.15 RHEL 8 from repository..."
 
-log_info "Installing MongoDB version in Ops Manager..."
-sudo mv mongodb-linux-x86_64-enterprise-rhel80-8.0.15.tgz /opt/mongodb/mms/mongodb-releases/
-sudo chown mongodb-mms:mongodb-mms /opt/mongodb/mms/mongodb-releases/mongodb-linux-x86_64-enterprise-rhel80-8.0.15.tgz
+# Check if we have the x86_64 version (preferred) or ARM64 version
+if [ -f "backend/opsmanagerfiles/mongodb-linux-x86_64-enterprise-rhel80-8.0.15.tgz" ]; then
+    MONGODB_BINARY="backend/opsmanagerfiles/mongodb-linux-x86_64-enterprise-rhel80-8.0.15.tgz"
+    log_info "Using x86_64 version"
+elif [ -f "backend/opsmanagerfiles/mongodb-linux-aarch64-enterprise-rhel8-8.0.15.tgz" ]; then
+    MONGODB_BINARY="backend/opsmanagerfiles/mongodb-linux-aarch64-enterprise-rhel8-8.0.15.tgz"
+    log_warning "Using ARM64 version - ensure Ops Manager server is ARM64 compatible"
+else
+    log_error "No MongoDB RHEL 8 binary found in backend/opsmanagerfiles/"
+    log_error "Please ensure the repository is cloned with Git LFS or manually download:"
+    log_error "  curl -LO https://fastdl.mongodb.org/linux/mongodb-linux-x86_64-enterprise-rhel80-8.0.15.tgz"
+    log_error "  mkdir -p backend/opsmanagerfiles/"
+    log_error "  mv mongodb-linux-x86_64-enterprise-rhel80-8.0.15.tgz backend/opsmanagerfiles/"
+    exit 1
+fi
+
+log_info "Copying MongoDB binary to Ops Manager..."
+sudo cp "$MONGODB_BINARY" /opt/mongodb/mms/mongodb-releases/
+sudo chown mongodb-mms:mongodb-mms /opt/mongodb/mms/mongodb-releases/$(basename "$MONGODB_BINARY")
 
 log_success "MongoDB RHEL 8 version installed in Ops Manager"
 
