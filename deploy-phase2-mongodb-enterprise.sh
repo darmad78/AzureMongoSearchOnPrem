@@ -31,8 +31,31 @@ NAMESPACE="mongodb"
 MDB_RESOURCE_NAME="mdb-rs"
 MDB_VERSION="8.2.1-ent"
 
-# Step 1: Get Ops Manager Credentials
-log_step "Step 1: Getting Ops Manager Credentials"
+# Step 1: Clean Operator Installation
+log_step "Step 1: Ensuring Clean Operator Installation"
+
+# Check if operator namespace exists and clean it if needed
+if kubectl get namespace mongodb-enterprise-operator &> /dev/null; then
+    log_info "Found existing operator namespace, cleaning it..."
+    kubectl delete namespace mongodb-enterprise-operator --ignore-not-found=true
+    log_info "Waiting for namespace deletion to complete..."
+    while kubectl get namespace mongodb-enterprise-operator &> /dev/null; do
+        sleep 2
+    done
+    log_success "Operator namespace cleaned"
+fi
+
+# Reinstall the operator cleanly
+log_info "Installing MongoDB Enterprise Operator..."
+helm install mongodb-enterprise-operator mongodb/enterprise-operator \
+    --namespace mongodb-enterprise-operator \
+    --create-namespace \
+    --wait
+
+log_success "MongoDB Enterprise Operator installed successfully"
+
+# Step 2: Get Ops Manager Credentials
+log_step "Step 2: Getting Ops Manager Credentials"
 echo -e "${YELLOW}"
 cat << "EOF"
 ╔══════════════════════════════════════════════════════════════╗
@@ -118,15 +141,15 @@ fi
 
 log_success "Credentials collected"
 
-# Step 2: Create Namespace
-log_step "Step 2: Creating MongoDB Namespace"
+# Step 3: Create Namespace
+log_step "Step 3: Creating MongoDB Namespace"
 log_info "Creating mongodb namespace..."
 
 kubectl create namespace ${NAMESPACE} --dry-run=client -o yaml | kubectl apply -f -
 log_success "MongoDB namespace created"
 
-# Step 3: Create Ops Manager Configuration
-log_step "Step 3: Creating Ops Manager Configuration"
+# Step 4: Create Ops Manager Configuration
+log_step "Step 4: Creating Ops Manager Configuration"
 log_info "Creating Ops Manager configuration with provided credentials..."
 
 kubectl apply -f - <<EOF
@@ -153,8 +176,8 @@ EOF
 
 log_success "Ops Manager configuration created"
 
-# Step 4: Deploy MongoDB Enterprise
-log_step "Step 4: Deploying MongoDB Enterprise"
+# Step 5: Deploy MongoDB Enterprise
+log_step "Step 5: Deploying MongoDB Enterprise"
 log_info "Deploying MongoDB Enterprise replica set..."
 
 kubectl apply -f - <<EOF
@@ -197,8 +220,8 @@ kubectl wait --for=jsonpath='{.status.phase}'=Running "mdb/${MDB_RESOURCE_NAME}"
 
 log_success "MongoDB Enterprise deployed and running"
 
-# Step 5: Create MongoDB Users
-log_step "Step 5: Creating MongoDB Users"
+# Step 6: Create MongoDB Users
+log_step "Step 6: Creating MongoDB Users"
 log_info "Creating MongoDB users for search functionality..."
 
 # Admin user
@@ -253,8 +276,8 @@ EOF
 
 log_success "MongoDB users created"
 
-# Step 6: Verify MongoDB Deployment
-log_step "Step 6: Verifying MongoDB Deployment"
+# Step 7: Verify MongoDB Deployment
+log_step "Step 7: Verifying MongoDB Deployment"
 log_info "Checking MongoDB deployment status..."
 
 echo "MongoDB resource:"
