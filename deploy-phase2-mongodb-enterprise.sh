@@ -86,6 +86,103 @@ else
     exit 1
 fi
 
+# Fix RBAC permissions for cluster-wide access
+log_info "Setting up cluster-wide RBAC permissions..."
+kubectl apply -f - <<EOF
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: mongodb-enterprise-operator-cluster
+rules:
+- apiGroups:
+  - ""
+  resources:
+  - services
+  verbs:
+  - get
+  - list
+  - watch
+  - create
+  - update
+  - delete
+- apiGroups:
+  - ""
+  resources:
+  - secrets
+  - configmaps
+  verbs:
+  - get
+  - list
+  - create
+  - update
+  - delete
+  - watch
+- apiGroups:
+  - apps
+  resources:
+  - statefulsets
+  verbs:
+  - create
+  - get
+  - list
+  - watch
+  - delete
+  - update
+- apiGroups:
+  - ""
+  resources:
+  - pods
+  verbs:
+  - get
+  - list
+  - watch
+  - delete
+  - deletecollection
+- apiGroups:
+  - mongodb.com
+  resources:
+  - mongodb
+  - mongodb/finalizers
+  - mongodbusers
+  - mongodbusers/finalizers
+  - opsmanagers
+  - opsmanagers/finalizers
+  - mongodbmulticluster
+  - mongodbmulticluster/finalizers
+  - mongodb/status
+  - mongodbusers/status
+  - opsmanagers/status
+  - mongodbmulticluster/status
+  verbs:
+  - '*'
+- apiGroups:
+  - ""
+  resources:
+  - persistentvolumeclaims
+  verbs:
+  - get
+  - delete
+  - list
+  - watch
+  - patch
+  - update
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: mongodb-enterprise-operator-cluster
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: mongodb-enterprise-operator-cluster
+subjects:
+- kind: ServiceAccount
+  name: mongodb-enterprise-operator
+  namespace: mongodb-enterprise-operator
+EOF
+
+log_success "Cluster-wide RBAC permissions configured"
+
 # Step 2: Get Ops Manager Credentials
 log_step "Step 2: Getting Ops Manager Credentials"
 echo -e "${YELLOW}"
