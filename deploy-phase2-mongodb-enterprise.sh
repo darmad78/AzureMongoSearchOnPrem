@@ -235,7 +235,7 @@ spec:
     name: ${MDB_RESOURCE_NAME}-search-sync-source-password
     key: password
   roles:
-  - name: searchCoordinator
+  - name: readWrite
     db: admin
 EOF
 
