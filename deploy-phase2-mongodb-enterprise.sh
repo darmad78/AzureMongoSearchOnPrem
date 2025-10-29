@@ -44,21 +44,76 @@ Please enter the credentials you obtained from Phase 1:
 EOF
 echo -e "${NC}"
 
+echo -e "${BLUE}📋 How to get each credential:${NC}"
+echo ""
+echo -e "${YELLOW}1. Organization ID:${NC}"
+echo "   • Open Ops Manager: http://${VM_IP}:8080"
+echo "   • After login, look at the URL: http://${VM_IP}:8080/v2/org/YOUR_ORG_ID/"
+echo "   • Or go to Organization Settings → General"
+echo ""
+echo -e "${YELLOW}2. Project ID:${NC}"
+echo "   • Go to your 'Search Project'"
+echo "   • Look at the URL: http://${VM_IP}:8080/v2/org/YOUR_ORG_ID/project/YOUR_PROJECT_ID/"
+echo "   • Or go to Project Settings → General"
+echo ""
+echo -e "${YELLOW}3. API Keys (Public & Private):${NC}"
+echo "   • Go to Project Settings → Access Manager → API Keys"
+echo "   • Click 'Generate New API Key'"
+echo "   • Set permissions:"
+echo "     - Project Owner (full access)"
+echo "     - Or at minimum:"
+echo "       • Project Read Only"
+echo "       • Project Data Access Read Only"
+echo "       • Project Owner"
+echo "   • Copy both Public and Private keys"
+echo ""
+
 # Get VM IP for Ops Manager URL
 VM_IP=$(hostname -I | awk '{print $1}')
 OPS_MANAGER_URL="http://${VM_IP}:8080"
 
 # Prompt for credentials
-read -p "Enter Organization ID: " ORG_ID
-read -p "Enter Project ID: " PROJECT_ID
-read -p "Enter Public API Key: " PUBLIC_KEY
-read -sp "Enter Private API Key: " PRIVATE_KEY
+echo -e "${YELLOW}Enter Organization ID (found in URL after /v2/org/):${NC}"
+read -p "Organization ID: " ORG_ID
 echo ""
+
+echo -e "${YELLOW}Enter Project ID (found in URL after /project/):${NC}"
+read -p "Project ID: " PROJECT_ID
+echo ""
+
+echo -e "${YELLOW}Enter Public API Key (from Project Settings → Access Manager → API Keys):${NC}"
+read -p "Public API Key: " PUBLIC_KEY
+echo ""
+
+echo -e "${YELLOW}Enter Private API Key (from same API Keys page):${NC}"
+read -sp "Private API Key: " PRIVATE_KEY
+echo ""
+
+# Validate inputs
+if [ -z "$ORG_ID" ] || [ -z "$PROJECT_ID" ] || [ -z "$PUBLIC_KEY" ] || [ -z "$PRIVATE_KEY" ]; then
+    log_error "One or more credentials are missing. Please run the script again."
+    exit 1
+fi
+
+log_info "Validating credentials format..."
+if [[ ! "$ORG_ID" =~ ^[0-9a-fA-F]{24}$ ]]; then
+    log_warning "Organization ID format looks unusual. Expected 24-character hex string."
+fi
+if [[ ! "$PROJECT_ID" =~ ^[0-9a-fA-F]{24}$ ]]; then
+    log_warning "Project ID format looks unusual. Expected 24-character hex string."
+fi
 
 log_success "Credentials collected"
 
-# Step 2: Create Ops Manager Configuration
-log_step "Step 2: Creating Ops Manager Configuration"
+# Step 2: Create Namespace
+log_step "Step 2: Creating MongoDB Namespace"
+log_info "Creating mongodb namespace..."
+
+kubectl create namespace ${NAMESPACE} --dry-run=client -o yaml | kubectl apply -f -
+log_success "MongoDB namespace created"
+
+# Step 3: Create Ops Manager Configuration
+log_step "Step 3: Creating Ops Manager Configuration"
 log_info "Creating Ops Manager configuration with provided credentials..."
 
 kubectl apply -f - <<EOF
@@ -85,8 +140,8 @@ EOF
 
 log_success "Ops Manager configuration created"
 
-# Step 3: Deploy MongoDB Enterprise
-log_step "Step 3: Deploying MongoDB Enterprise"
+# Step 4: Deploy MongoDB Enterprise
+log_step "Step 4: Deploying MongoDB Enterprise"
 log_info "Deploying MongoDB Enterprise replica set..."
 
 kubectl apply -f - <<EOF
@@ -130,8 +185,8 @@ kubectl wait --for=jsonpath='{.status.phase}'=Running "mdb/${MDB_RESOURCE_NAME}"
 
 log_success "MongoDB Enterprise deployed and running"
 
-# Step 4: Create MongoDB Users
-log_step "Step 4: Creating MongoDB Users"
+# Step 5: Create MongoDB Users
+log_step "Step 5: Creating MongoDB Users"
 log_info "Creating MongoDB users for search functionality..."
 
 # Admin user
@@ -211,8 +266,8 @@ EOF
 
 log_success "MongoDB users created"
 
-# Step 5: Verify MongoDB Deployment
-log_step "Step 5: Verifying MongoDB Deployment"
+# Step 6: Verify MongoDB Deployment
+log_step "Step 6: Verifying MongoDB Deployment"
 log_info "Checking MongoDB deployment status..."
 
 echo "MongoDB resource:"
