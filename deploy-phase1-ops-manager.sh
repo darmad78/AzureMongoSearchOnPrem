@@ -366,7 +366,23 @@ Please open the Ops Manager URL in your browser and complete:
 4.  **Create Project**: Name it "Search Project"
 
 5.  **Configure Settings**: 
-    - Set Base URL to http://<VM_IP>:9000
+    - Set Base URL to http://<VM_IP>:8080
+    - **Web Server & Email Configuration**:
+      - HTTPS PEM Key File: Leave empty
+      - Client Certificate Mode: "None"
+      - "From" Email Address: Ops Manager<noreply@ops-manager.local>
+      - "Reply To" Email Address: noreply@ops-manager.local
+      - Admin Email Address: admin@ops-manager.local
+      - Email Delivery Method: SMTP Email Server
+      - SMTP Server Hostname: smtp.gmail.com
+      - SMTP Server Port: 587
+      - Use TLS/SSL: true
+    - **MongoDB Version Management**:
+      - Installer Download Source: "local"
+      - Versions Directory: /opt/mongodb/mms/mongodb-releases/
+      - Backup Versions Auto Download: true
+      - Backup Versions Auto Download Enterprise Builds: false
+      - Required Module for Backup: "Enterprise Preferred"
 
 6.  **Generate API Keys**: 
     - Go to Project Settings → Access Manager → API Keys
