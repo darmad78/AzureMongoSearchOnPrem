@@ -340,6 +340,7 @@ data:
   projectName: "${PROJECT_ID}"
   orgId: "${ORG_ID}"
   baseUrl: "${OPS_MANAGER_URL}"
+  authType: DIGEST
 ---
 apiVersion: v1
 kind: Secret
