@@ -194,7 +194,9 @@ sudo sed -i "s|mongo.ssl=.*|mongo.ssl=false|g" ${CONF_FILE}
 # Use port 9000 instead of 8080 (K8s uses 8080 for NodePort)
 log_info "Configuring Ops Manager to use port 9000 (K8s uses 8080)..."
 sudo sed -i 's/-Dbase-port=8080/-Dbase-port=9000/g' /opt/mongodb/mms/bin/mongodb-mms
+sudo sed -i 's/base-port=8080/base-port=9000/g' /opt/mongodb/mms/bin/mongodb-mms-backup-daemon
 echo "mms.listen.http.port=9000" | sudo tee -a ${CONF_FILE}
+echo "base-port=9000" | sudo tee -a ${CONF_FILE}
 
 log_success "Ops Manager configuration updated"
 
