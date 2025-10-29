@@ -191,6 +191,11 @@ sudo cp ${CONF_FILE} ${CONF_FILE}.backup
 sudo sed -i "s|mongo.mongoUri=.*|mongo.mongoUri=mongodb://admin:admin123@$NODE_IP:$NODE_PORT/mms?authSource=admin|g" ${CONF_FILE}
 sudo sed -i "s|mongo.ssl=.*|mongo.ssl=false|g" ${CONF_FILE}
 
+# Use port 9000 instead of 8080 (K8s uses 8080 for NodePort)
+log_info "Configuring Ops Manager to use port 9000 (K8s uses 8080)..."
+sudo sed -i 's/-Dbase-port=8080/-Dbase-port=9000/g' /opt/mongodb/mms/bin/mongodb-mms
+echo "mms.listen.http.port=9000" | sudo tee -a ${CONF_FILE}
+
 log_success "Ops Manager configuration updated"
 
 # Step 7: Clear old migration logs
@@ -200,17 +205,45 @@ log_success "Migration logs cleared"
 
 # Step 8: Start Ops Manager
 log_step "Step 8: Starting Ops Manager Service"
-log_info "Starting mongodb-mms service..."
 
+# Kill any existing process on port 8080 (including Docker)
+log_info "Checking for processes on port 8080..."
+PID=$(sudo lsof -ti :8080 2>/dev/null || true)
+if [ ! -z "$PID" ]; then
+    log_warning "Found process(es) on port 8080, stopping them..."
+    # Try to stop Docker container gracefully first
+    CONTAINER=$(sudo docker ps 2>/dev/null | grep 8080 | awk '{print $1}' || true)
+    if [ ! -z "$CONTAINER" ]; then
+        log_info "Stopping Docker container: $CONTAINER"
+        sudo docker stop $CONTAINER 2>/dev/null || true
+        sleep 2
+    fi
+    # Kill any remaining processes
+    for p in $PID; do
+        sudo kill -9 $p 2>/dev/null || true
+    done
+    sleep 2
+fi
+
+log_info "Starting mongodb-mms service..."
 sudo service mongodb-mms start
 
-log_info "Waiting for Ops Manager to initialize (2 minutes)..."
-sleep 120
+log_info "Waiting for Ops Manager to initialize (3 minutes)..."
+for i in {1..36}; do
+    sleep 5
+    if curl -s http://localhost:8080 > /dev/null 2>&1; then
+        log_success "Ops Manager is responding!"
+        break
+    fi
+    echo -ne "."
+done
+echo ""
 
 if sudo service mongodb-mms status | grep -q running; then
     log_success "Ops Manager service running"
 else
-    log_warning "Ops Manager may still be initializing..."
+    log_warning "Ops Manager service exited, checking logs..."
+    sudo tail -20 /opt/mongodb/mms/logs/mms0.log
 fi
 
 # Step 9: Verify Deployment
