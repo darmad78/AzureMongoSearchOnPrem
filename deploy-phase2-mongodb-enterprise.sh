@@ -29,7 +29,7 @@ echo -e "${NC}"
 # Configuration
 NAMESPACE="mongodb"
 MDB_RESOURCE_NAME="mdb-rs"
-MDB_VERSION="8.2.0-ent"
+MDB_VERSION="8.2.1-ent"
 
 # Step 1: Get Ops Manager Credentials
 log_step "Step 1: Getting Ops Manager Credentials"
@@ -146,18 +146,17 @@ log_info "Deploying MongoDB Enterprise replica set..."
 
 kubectl apply -f - <<EOF
 apiVersion: mongodb.com/v1
-kind: MongoDB
+kind: MongoDBMulti
 metadata:
   name: ${MDB_RESOURCE_NAME}
   namespace: ${NAMESPACE}
 spec:
-  members: 3
-  version: ${MDB_VERSION}
   type: ReplicaSet
+  version: ${MDB_VERSION}
+  credentials: om-credentials
   opsManager:
     configMapRef:
       name: om-project
-  credentials: om-credentials
   security:
     authentication:
       enabled: true
@@ -166,22 +165,28 @@ spec:
       - SCRAM
   agent:
     logLevel: INFO
-  podSpec:
-    podTemplate:
-      spec:
-        containers:
-        - name: mongodb-enterprise-database
-          resources:
-            limits:
-              cpu: "2"
-              memory: 2Gi
-            requests:
-              cpu: "1"
-              memory: 1Gi
+  clusterSpecList:
+    clusterSpecs:
+    - clusterName: ${MDB_RESOURCE_NAME}
+      members: 3
+      exposedExternally: false
+      statefulSet:
+        spec:
+          template:
+            spec:
+              containers:
+              - name: mongodb-enterprise-database
+                resources:
+                  limits:
+                    cpu: "2"
+                    memory: 2Gi
+                  requests:
+                    cpu: "1"
+                    memory: 1Gi
 EOF
 
 log_info "Waiting for MongoDB resource to reach Running phase..."
-kubectl wait --for=jsonpath='{.status.phase}'=Running "mdb/${MDB_RESOURCE_NAME}" -n ${NAMESPACE} --timeout=600s
+kubectl wait --for=jsonpath='{.status.phase}'=Running "mongodbmulti/${MDB_RESOURCE_NAME}" -n ${NAMESPACE} --timeout=600s
 
 log_success "MongoDB Enterprise deployed and running"
 
@@ -204,7 +209,7 @@ metadata:
 spec:
   username: mdb-admin
   db: admin
-  mongodbResourceRef:
+  mongodbMultiResourceRef:
     name: ${MDB_RESOURCE_NAME}
   passwordSecretKeyRef:
     name: mdb-admin-user-password
@@ -214,32 +219,7 @@ spec:
     db: admin
 EOF
 
-# Search sync user
-kubectl create secret generic "${MDB_RESOURCE_NAME}-search-sync-source-password" \
-  -n ${NAMESPACE} \
-  --from-literal=password="search-sync-user-password-CHANGE-ME" \
-  --dry-run=client -o yaml | kubectl apply -f -
-
-kubectl apply -f - <<EOF
-apiVersion: mongodb.com/v1
-kind: MongoDBUser
-metadata:
-  name: search-sync-source-user
-  namespace: ${NAMESPACE}
-spec:
-  username: search-sync-source
-  db: admin
-  mongodbResourceRef:
-    name: ${MDB_RESOURCE_NAME}
-  passwordSecretKeyRef:
-    name: ${MDB_RESOURCE_NAME}-search-sync-source-password
-    key: password
-  roles:
-  - name: readWrite
-    db: admin
-EOF
-
-# Regular user
+# Application user
 kubectl create secret generic mdb-user-password \
   -n ${NAMESPACE} \
   --from-literal=password="mdb-user-password-CHANGE-ME" \
@@ -254,14 +234,14 @@ metadata:
 spec:
   username: mdb-user
   db: admin
-  mongodbResourceRef:
+  mongodbMultiResourceRef:
     name: ${MDB_RESOURCE_NAME}
   passwordSecretKeyRef:
     name: mdb-user-password
     key: password
   roles:
   - name: readWrite
-    db: sample_mflix
+    db: admin
 EOF
 
 log_success "MongoDB users created"
@@ -271,7 +251,7 @@ log_step "Step 6: Verifying MongoDB Deployment"
 log_info "Checking MongoDB deployment status..."
 
 echo "MongoDB resource:"
-kubectl get "mdb/${MDB_RESOURCE_NAME}" -n ${NAMESPACE}
+kubectl get "mongodbmulti/${MDB_RESOURCE_NAME}" -n ${NAMESPACE}
 echo ""
 echo "MongoDB pods:"
 kubectl get pods -n ${NAMESPACE} -l app=mongodb-rs-svc
