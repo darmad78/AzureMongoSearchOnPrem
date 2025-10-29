@@ -29,7 +29,7 @@ echo -e "${NC}"
 # Configuration
 NAMESPACE="mongodb"
 MDB_RESOURCE_NAME="mdb-rs"
-MDB_VERSION="8.0.15-ent"
+MDB_VERSION="8.2.0-ent"
 
 # Step 1: Clean Operator Installation
 log_step "Step 1: Ensuring Clean Operator Installation"
