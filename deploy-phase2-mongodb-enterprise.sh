@@ -200,19 +200,18 @@ spec:
       ignoreUnknownUsers: true
       modes:
       - SCRAM
-  statefulSet:
-    spec:
-      template:
-        spec:
-          containers:
-          - name: mongodb-enterprise-database
-            resources:
-              limits:
-                cpu: "2"
-                memory: 2Gi
-              requests:
-                cpu: "1"
-                memory: 1Gi
+  podSpec:
+    podTemplate:
+      spec:
+        containers:
+        - name: mongodb-enterprise-database
+          resources:
+            limits:
+              cpu: "2"
+              memory: 2Gi
+            requests:
+              cpu: "1"
+              memory: 1Gi
 EOF
 
 log_info "Waiting for MongoDB resource to reach Running phase..."
