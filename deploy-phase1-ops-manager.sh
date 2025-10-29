@@ -22,7 +22,7 @@ OPS_MANAGER_NAMESPACE="ops-manager"
 VM_IP=$(hostname -I | awk '{print $1}')
 
 echo -e "╔══════════════════════════════════════════════════════════════╗"
-echo -e "║                 Phase 1: Ops Manager Setup                 ║"
+echo -e "║                    Phase 1: Ops Manager Setup              ║"
 echo -e "╚══════════════════════════════════════════════════════════════╝"
 echo "VM IP: ${VM_IP}"
 echo ""
@@ -192,7 +192,7 @@ sudo sed -i "s|mongo.mongoUri=.*|mongo.mongoUri=mongodb://admin:admin123@$NODE_I
 sudo sed -i "s|mongo.ssl=.*|mongo.ssl=false|g" ${CONF_FILE}
 
 # Use port 9000 instead of 8080 (K8s uses 8080 for NodePort)
-log_info "Configuring Ops Manager to use port 9000..."
+log_info "Configuring Ops Manager to use port 9000 (K8s uses 8080)..."
 sudo sed -i 's/-Dbase-port=8080/-Dbase-port=9000/g' /opt/mongodb/mms/bin/mongodb-mms
 sudo sed -i 's/base-port=8080/base-port=9000/g' /opt/mongodb/mms/bin/mongodb-mms-backup-daemon
 echo "mms.listen.http.port=9000" | sudo tee -a ${CONF_FILE}
@@ -208,13 +208,13 @@ log_success "Migration logs cleared"
 # Step 8: Start Ops Manager
 log_step "Step 8: Starting Ops Manager Service"
 
-# Kill any existing process on port 9000 (including Docker)
-log_info "Checking for processes on port 9000..."
-PID=$(sudo lsof -ti :9000 2>/dev/null || true)
+# Kill any existing process on port 8080 (including Docker)
+log_info "Checking for processes on port 8080..."
+PID=$(sudo lsof -ti :8080 2>/dev/null || true)
 if [ ! -z "$PID" ]; then
-    log_warning "Found process(es) on port 9000, stopping them..."
+    log_warning "Found process(es) on port 8080, stopping them..."
     # Try to stop Docker container gracefully first
-    CONTAINER=$(sudo docker ps 2>/dev/null | grep 9000 | awk '{print $1}' || true)
+    CONTAINER=$(sudo docker ps 2>/dev/null | grep 8080 | awk '{print $1}' || true)
     if [ ! -z "$CONTAINER" ]; then
         log_info "Stopping Docker container: $CONTAINER"
         sudo docker stop $CONTAINER 2>/dev/null || true
@@ -245,7 +245,7 @@ if sudo service mongodb-mms status | grep -q running; then
     log_success "Ops Manager service running"
 else
     log_warning "Ops Manager service exited, checking logs..."
-    sudo tail -20 /opt/mongodb/mms/logs/mms-migration.log
+    sudo tail -20 /opt/mongodb/mms/logs/mms0.log
 fi
 
 # Step 9: Verify Deployment
@@ -284,7 +284,7 @@ log_step "Step 11: Complete Web UI Setup"
 echo -e "${YELLOW}"
 cat << "EOF"
 ╔══════════════════════════════════════════════════════════════╗
-║             Ops Manager Web UI Setup Required              ║
+║              Ops Manager Web UI Setup Required             ║
 ╚══════════════════════════════════════════════════════════════╝
 
 Please open the Ops Manager URL in your browser and complete:
