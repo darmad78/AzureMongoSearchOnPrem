@@ -57,19 +57,34 @@ log_success "MongoDB Enterprise Operator installed successfully"
 
 # Fix WATCH_NAMESPACE to watch all namespaces
 log_info "Fixing WATCH_NAMESPACE to watch all namespaces..."
-kubectl patch deployment mongodb-enterprise-operator -n mongodb-enterprise-operator --type='json' -p='[{"op": "replace", "path": "/spec/template/spec/containers/0/env/4/value", "value": ""}, {"op": "remove", "path": "/spec/template/spec/containers/0/env/4/valueFrom"}]' || {
-    log_warning "JSON patch failed, using alternative method..."
-    # Alternative: Use sed to modify the deployment
-    kubectl get deployment mongodb-enterprise-operator -n mongodb-enterprise-operator -o yaml | \
-    sed 's/valueFrom:/value: ""\n    # valueFrom:/g' | \
-    sed '/# valueFrom:/,/fieldPath: metadata.namespace/d' | \
-    kubectl apply -f -
-}
+log_warning "This requires manual intervention. Please run the following command:"
+echo ""
+echo "kubectl edit deployment mongodb-enterprise-operator -n mongodb-enterprise-operator"
+echo ""
+echo "In the editor, find the WATCH_NAMESPACE section and change it from:"
+echo "  - name: WATCH_NAMESPACE"
+echo "    valueFrom:"
+echo "      fieldRef:"
+echo "        apiVersion: v1"
+echo "        fieldPath: metadata.namespace"
+echo ""
+echo "To:"
+echo "  - name: WATCH_NAMESPACE"
+echo "    value: \"\""
+echo ""
+echo "Then save and exit (in vim: Esc, then :wq, Enter)"
+echo ""
+read -p "Press Enter after you've made the change and the deployment has restarted..."
 
-log_info "Waiting for operator to restart with new configuration..."
-kubectl rollout status deployment/mongodb-enterprise-operator -n mongodb-enterprise-operator --timeout=120s
-
-log_success "MongoDB Enterprise Operator configured to watch all namespaces"
+log_info "Verifying WATCH_NAMESPACE fix..."
+WATCH_NS=$(kubectl get deployment mongodb-enterprise-operator -n mongodb-enterprise-operator -o jsonpath='{.spec.template.spec.containers[0].env[?(@.name=="WATCH_NAMESPACE")].value}')
+if [ "$WATCH_NS" = "" ]; then
+    log_success "WATCH_NAMESPACE is correctly set to empty string"
+else
+    log_error "WATCH_NAMESPACE is still set to: $WATCH_NS"
+    log_error "Please fix this manually before continuing"
+    exit 1
+fi
 
 # Step 2: Get Ops Manager Credentials
 log_step "Step 2: Getting Ops Manager Credentials"
