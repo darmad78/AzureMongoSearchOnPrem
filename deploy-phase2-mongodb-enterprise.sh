@@ -29,7 +29,7 @@ echo -e "${NC}"
 # Configuration
 NAMESPACE="mongodb"
 MDB_RESOURCE_NAME="mdb-rs"
-MDB_VERSION="8.2.1-ent"
+MDB_VERSION="8.0.15-ent"
 
 # Step 1: Clean Operator Installation
 log_step "Step 1: Ensuring Clean Operator Installation"
@@ -310,6 +310,11 @@ log_info "Creating mongodb namespace..."
 
 kubectl create namespace ${NAMESPACE} --dry-run=client -o yaml | kubectl apply -f -
 log_success "MongoDB namespace created"
+
+# Create required ServiceAccount for MongoDB pods
+log_info "Creating ServiceAccount for MongoDB pods..."
+kubectl create serviceaccount mongodb-enterprise-database-pods -n ${NAMESPACE} --dry-run=client -o yaml | kubectl apply -f -
+log_success "ServiceAccount created"
 
 # Step 4: Create Ops Manager Configuration
 log_step "Step 4: Creating Ops Manager Configuration"
