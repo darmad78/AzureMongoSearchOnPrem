@@ -88,6 +88,7 @@ fi
 
 # Fix RBAC permissions for cluster-wide access
 log_info "Setting up cluster-wide RBAC permissions..."
+log_info "Creating/updating ClusterRole with all necessary permissions..."
 kubectl apply -f - <<EOF
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
@@ -166,6 +167,14 @@ rules:
   - watch
   - patch
   - update
+- apiGroups:
+  - ""
+  resources:
+  - namespaces
+  verbs:
+  - get
+  - list
+  - watch
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
@@ -182,6 +191,18 @@ subjects:
 EOF
 
 log_success "Cluster-wide RBAC permissions configured"
+
+# Verify RBAC permissions
+log_info "Verifying RBAC permissions..."
+kubectl auth can-i list mongodb --as=system:serviceaccount:mongodb-enterprise-operator:mongodb-enterprise-operator --all-namespaces
+kubectl auth can-i list namespaces --as=system:serviceaccount:mongodb-enterprise-operator:mongodb-enterprise-operator
+kubectl auth can-i list statefulsets --as=system:serviceaccount:mongodb-enterprise-operator:mongodb-enterprise-operator --all-namespaces
+
+log_info "Restarting operator to pick up new RBAC permissions..."
+kubectl rollout restart deployment/mongodb-enterprise-operator -n mongodb-enterprise-operator
+kubectl rollout status deployment/mongodb-enterprise-operator -n mongodb-enterprise-operator --timeout=120s
+
+log_success "Operator restarted with cluster-wide permissions"
 
 # Step 2: Get Ops Manager Credentials
 log_step "Step 2: Getting Ops Manager Credentials"
