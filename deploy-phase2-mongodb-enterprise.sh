@@ -50,6 +50,7 @@ log_info "Installing MongoDB Enterprise Operator..."
 helm install mongodb-enterprise-operator mongodb/enterprise-operator \
     --namespace mongodb-enterprise-operator \
     --create-namespace \
+    --set "watchNamespace=" \
     --wait
 
 log_success "MongoDB Enterprise Operator installed successfully"
