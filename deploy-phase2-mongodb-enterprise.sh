@@ -72,22 +72,35 @@ echo ""
 VM_IP=$(hostname -I | awk '{print $1}')
 OPS_MANAGER_URL="http://${VM_IP}:8080"
 
-# Prompt for credentials
-echo -e "${YELLOW}Enter Organization ID (found in URL after /v2/org/):${NC}"
-read -p "Organization ID: " ORG_ID
-echo ""
+# Check for environment variables first
+if [ -z "$ORG_ID" ] || [ -z "$PROJECT_ID" ] || [ -z "$PUBLIC_KEY" ] || [ -z "$PRIVATE_KEY" ]; then
+    echo -e "${YELLOW}Environment variables not found. Please enter Ops Manager credentials:${NC}"
+    echo ""
+    
+    # Prompt for credentials
+    echo -e "${YELLOW}Enter Organization ID (found in URL after /v2/org/):${NC}"
+    read -p "Organization ID: " ORG_ID
+    echo ""
 
-echo -e "${YELLOW}Enter Project ID (found in URL after /project/):${NC}"
-read -p "Project ID: " PROJECT_ID
-echo ""
+    echo -e "${YELLOW}Enter Project ID (found in URL after /project/):${NC}"
+    read -p "Project ID: " PROJECT_ID
+    echo ""
 
-echo -e "${YELLOW}Enter Public API Key (from Project Settings → Access Manager → API Keys):${NC}"
-read -p "Public API Key: " PUBLIC_KEY
-echo ""
+    echo -e "${YELLOW}Enter Public API Key (from Project Settings → Access Manager → API Keys):${NC}"
+    read -p "Public API Key: " PUBLIC_KEY
+    echo ""
 
-echo -e "${YELLOW}Enter Private API Key (from same API Keys page):${NC}"
-read -sp "Private API Key: " PRIVATE_KEY
-echo ""
+    echo -e "${YELLOW}Enter Private API Key (from same API Keys page):${NC}"
+    read -sp "Private API Key: " PRIVATE_KEY
+    echo ""
+else
+    log_info "Using credentials from environment variables"
+    echo "Organization ID: $ORG_ID"
+    echo "Project ID: $PROJECT_ID"
+    echo "Public API Key: $PUBLIC_KEY"
+    echo "Private API Key: [HIDDEN]"
+    echo ""
+fi
 
 # Validate inputs
 if [ -z "$ORG_ID" ] || [ -z "$PROJECT_ID" ] || [ -z "$PUBLIC_KEY" ] || [ -z "$PRIVATE_KEY" ]; then
@@ -146,45 +159,40 @@ log_info "Deploying MongoDB Enterprise replica set..."
 
 kubectl apply -f - <<EOF
 apiVersion: mongodb.com/v1
-kind: MongoDBMulti
+kind: MongoDB
 metadata:
   name: ${MDB_RESOURCE_NAME}
   namespace: ${NAMESPACE}
 spec:
-  type: ReplicaSet
+  members: 3
   version: ${MDB_VERSION}
-  credentials: om-credentials
+  type: ReplicaSet
   opsManager:
     configMapRef:
       name: om-project
+  credentials: om-credentials
   security:
     authentication:
       enabled: true
       ignoreUnknownUsers: true
       modes:
       - SCRAM
-  clusterSpecList:
-    clusterSpecs:
-    - clusterName: ${MDB_RESOURCE_NAME}
-      members: 3
-      exposedExternally: false
-      statefulSet:
-        spec:
-          template:
-            spec:
-              containers:
-              - name: mongodb-enterprise-database
-                resources:
-                  limits:
-                    cpu: "2"
-                    memory: 2Gi
-                  requests:
-                    cpu: "1"
-                    memory: 1Gi
+  podSpec:
+    podTemplate:
+      spec:
+        containers:
+        - name: mongodb-enterprise-database
+          resources:
+            limits:
+              cpu: "2"
+              memory: 2Gi
+            requests:
+              cpu: "1"
+              memory: 1Gi
 EOF
 
 log_info "Waiting for MongoDB resource to reach Running phase..."
-kubectl wait --for=jsonpath='{.status.phase}'=Running "mongodbmulti/${MDB_RESOURCE_NAME}" -n ${NAMESPACE} --timeout=600s
+kubectl wait --for=jsonpath='{.status.phase}'=Running "mdb/${MDB_RESOURCE_NAME}" -n ${NAMESPACE} --timeout=600s
 
 log_success "MongoDB Enterprise deployed and running"
 
@@ -207,7 +215,7 @@ metadata:
 spec:
   username: mdb-admin
   db: admin
-  mongodbMultiResourceRef:
+  mongodbResourceRef:
     name: ${MDB_RESOURCE_NAME}
   passwordSecretKeyRef:
     name: mdb-admin-user-password
@@ -232,7 +240,7 @@ metadata:
 spec:
   username: mdb-user
   db: admin
-  mongodbMultiResourceRef:
+  mongodbResourceRef:
     name: ${MDB_RESOURCE_NAME}
   passwordSecretKeyRef:
     name: mdb-user-password
@@ -249,7 +257,7 @@ log_step "Step 6: Verifying MongoDB Deployment"
 log_info "Checking MongoDB deployment status..."
 
 echo "MongoDB resource:"
-kubectl get "mongodbmulti/${MDB_RESOURCE_NAME}" -n ${NAMESPACE}
+kubectl get "mdb/${MDB_RESOURCE_NAME}" -n ${NAMESPACE}
 echo ""
 echo "MongoDB pods:"
 kubectl get pods -n ${NAMESPACE} -l app=mongodb-rs-svc
