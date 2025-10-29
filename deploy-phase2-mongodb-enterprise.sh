@@ -304,15 +304,75 @@ echo "   • Or add range: 192.168.49.0/24"
 echo ""
 read -p "Press Enter after adding the IP to the access list..."
 
+# Wait for MongoDB pods to be created and get their IPs
+log_info "Waiting for MongoDB pods to be created..."
+kubectl wait --for=condition=Ready pod -l app=mongodb-enterprise-database -n ${NAMESPACE} --timeout=300s || true
+
+# Get MongoDB pod IPs for IP access list
+log_info "Getting MongoDB pod IPs for Ops Manager IP Access List..."
+MONGODB_POD_IPS=$(kubectl get pods -n ${NAMESPACE} -l app=mongodb-enterprise-database -o jsonpath='{.items[*].status.podIP}')
+if [ -n "$MONGODB_POD_IPS" ]; then
+    log_warning "CRITICAL: Add these MongoDB pod IPs to Ops Manager IP Access List:"
+    echo ""
+    echo "📋 MongoDB Pod IPs to add:"
+    for ip in $MONGODB_POD_IPS; do
+        echo "   • $ip/32"
+    done
+    echo ""
+    echo "   • Go to Ops Manager: http://${VM_IP}:8080"
+    echo "   • Organization Settings → Access Manager → IP Access List"
+    echo "   • Add each IP above with /32 subnet"
+    echo "   • Or add the entire pod network range if known"
+    echo ""
+    read -p "Press Enter after adding the MongoDB pod IPs to the access list..."
+else
+    log_warning "MongoDB pods not yet created. You may need to add pod IPs manually later."
+fi
+
+# Configure Ops Manager URL
+log_info "Configuring Ops Manager URL..."
+log_warning "IMPORTANT: Fix Ops Manager configuration file"
+echo ""
+echo "📋 Fix Ops Manager Configuration:"
+echo "   • The config file shows port 8888, but we need 8080"
+echo "   • Check the config file: /opt/mongodb/mms/conf/conf-mms.properties"
+echo "   • Look for 'mms.centralUrl' and change port from 8888 to 8080"
+echo "   • Or check: /opt/mongodb/mms/conf/conf-mms.properties"
+echo "   • Restart Ops Manager after making changes"
+echo ""
+echo "   • Also configure in web interface:"
+echo "   • Go to Ops Manager: http://${VM_IP}:8080"
+echo "   • Organization Settings → General"
+echo "   • Set 'URL to Access Ops Manager' to: http://${VM_IP}:8080"
+echo ""
+read -p "Press Enter after fixing the Ops Manager configuration..."
+
+# Check and fix Ops Manager config file
+log_info "Checking Ops Manager configuration file..."
+if [ -f "/opt/mongodb/mms/conf/conf-mms.properties" ]; then
+    log_info "Found Ops Manager config file. Checking current settings..."
+    grep -i "centralUrl\|mms.centralUrl" /opt/mongodb/mms/conf/conf-mms.properties || echo "No centralUrl found in config"
+    
+    log_info "Updating Ops Manager config to use port 8080..."
+    sudo sed -i 's/8888/8080/g' /opt/mongodb/mms/conf/conf-mms.properties
+    
+    log_info "Restarting Ops Manager to apply changes..."
+    sudo systemctl restart mongodb-mms
+    
+    log_success "Ops Manager restarted with updated configuration"
+else
+    log_warning "Ops Manager config file not found. Please check manually."
+fi
+
 # Download and install MongoDB version for Ops Manager
-log_info "Downloading MongoDB Enterprise 8.0.15 for Ops Manager..."
-curl -LO https://fastdl.mongodb.org/linux/mongodb-linux-x86_64-enterprise-ubuntu2204-8.0.15.tgz
+log_info "Downloading MongoDB Enterprise 8.0.15 for RHEL 8 (Ops Manager server)..."
+curl -LO https://fastdl.mongodb.org/linux/mongodb-linux-x86_64-enterprise-rhel80-8.0.15.tgz
 
 log_info "Installing MongoDB version in Ops Manager..."
-sudo mv mongodb-linux-x86_64-enterprise-ubuntu2204-8.0.15.tgz /opt/mongodb/mms/mongodb-releases/
-sudo chown mongodb-mms:mongodb-mms /opt/mongodb/mms/mongodb-releases/mongodb-linux-x86_64-enterprise-ubuntu2204-8.0.15.tgz
+sudo mv mongodb-linux-x86_64-enterprise-rhel80-8.0.15.tgz /opt/mongodb/mms/mongodb-releases/
+sudo chown mongodb-mms:mongodb-mms /opt/mongodb/mms/mongodb-releases/mongodb-linux-x86_64-enterprise-rhel80-8.0.15.tgz
 
-log_success "MongoDB version installed in Ops Manager"
+log_success "MongoDB RHEL 8 version installed in Ops Manager"
 
 # Step 3: Create Namespace
 log_step "Step 3: Creating MongoDB Namespace"
