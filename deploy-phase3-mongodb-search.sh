@@ -32,7 +32,9 @@ MDB_RESOURCE_NAME="mdb-rs"
 
 # Step 0: Ensure MongoDBSearch CRD and operator are installed
 log_step "Step 0: Verifying MongoDBSearch CRD and operator"
-if ! kubectl get crd mongodbsearches.mongodb.com >/dev/null 2>&1; then
+# Support both CRD names seen across chart versions
+if ! kubectl get crd mongodbsearch.mongodb.com >/dev/null 2>&1 && \
+   ! kubectl get crd mongodbsearches.mongodb.com >/dev/null 2>&1; then
     log_warning "MongoDBSearch CRD not found. Installing MongoDB Controllers for Kubernetes via Helm..."
     if ! command -v helm >/dev/null 2>&1; then
         log_error "helm not found. Please install Helm and re-run this script."
@@ -45,7 +47,8 @@ if ! kubectl get crd mongodbsearches.mongodb.com >/dev/null 2>&1; then
       mongodb-kubernetes mongodb/mongodb-kubernetes
     # Wait a moment for CRDs to register
     sleep 5
-    if ! kubectl get crd mongodbsearches.mongodb.com >/dev/null 2>&1; then
+    if ! kubectl get crd mongodbsearch.mongodb.com >/dev/null 2>&1 && \
+       ! kubectl get crd mongodbsearches.mongodb.com >/dev/null 2>&1; then
         log_error "MongoDBSearch CRD still not available after installation. Please check operator deployment."
         exit 1
     fi
