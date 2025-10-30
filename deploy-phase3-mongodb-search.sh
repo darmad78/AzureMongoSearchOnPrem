@@ -43,8 +43,36 @@ fi
 
 log_success "MongoDB Enterprise is running and ready"
 
-# Step 2: Deploy MongoDB Search
-log_step "Step 2: Deploying MongoDB Search"
+# Step 2: Ensure Search Sync User and Secret
+log_step "Step 2: Creating search sync user and secret"
+log_info "Creating secret for search sync user (if not exists)..."
+
+kubectl create secret generic ${MDB_RESOURCE_NAME}-search-sync-source-password \
+  -n ${NAMESPACE} \
+  --from-literal=password="search-sync-user-password-CHANGE-ME" \
+  --dry-run=client -o yaml | kubectl apply -f -
+
+kubectl apply -f - <<EOF
+apiVersion: mongodb.com/v1
+kind: MongoDBUser
+metadata:
+  name: search-sync-source-user
+  namespace: ${NAMESPACE}
+spec:
+  username: search-sync-source
+  db: admin
+  mongodbResourceRef:
+    name: ${MDB_RESOURCE_NAME}
+  passwordSecretKeyRef:
+    name: ${MDB_RESOURCE_NAME}-search-sync-source-password
+    key: password
+  roles:
+  - name: searchCoordinator
+    db: admin
+EOF
+
+# Step 3: Deploy MongoDB Search
+log_step "Step 3: Deploying MongoDB Search"
 log_info "Deploying MongoDB Search (mongot) with proper resource requirements..."
 
 kubectl apply -f - <<EOF
@@ -68,8 +96,8 @@ kubectl wait --for=jsonpath='{.status.phase}'=Running "mdbs/${MDB_RESOURCE_NAME}
 
 log_success "MongoDB Search deployed and running"
 
-# Step 3: Verify Complete Stack
-log_step "Step 3: Verifying Complete Stack"
+# Step 4: Verify Complete Stack
+log_step "Step 4: Verifying Complete Stack"
 log_info "Checking all components status..."
 
 echo "MongoDB Enterprise:"
@@ -85,8 +113,8 @@ echo "Ops Manager Pods:"
 kubectl get pods -n ops-manager
 echo ""
 
-# Step 4: Get Access Information
-log_step "Step 4: Access Information"
+# Step 5: Get Access Information
+log_step "Step 5: Access Information"
 VM_IP=$(hostname -I | awk '{print $1}')
 OPS_MANAGER_PORT=$(kubectl get svc ops-manager-svc -n ops-manager -o jsonpath='{.spec.ports[0].nodePort}' 2>/dev/null || echo "8080")
 MONGODB_PORT=$(kubectl get svc mongodb-rs-svc -n ${NAMESPACE} -o jsonpath='{.spec.ports[0].nodePort}' 2>/dev/null || echo "27017")

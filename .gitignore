@@ -121,3 +121,6 @@ docker-compose.override.yml
 
 # Allow MongoDB binaries in opsmanagerfiles directory
 !backend/opsmanagerfiles/*.tgz
+
+# Ignore Ops Manager MongoDB binaries
+backend/opsmanagerfiles/*.tgz

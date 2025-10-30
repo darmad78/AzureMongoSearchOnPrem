@@ -29,7 +29,7 @@ echo -e "${NC}"
 # Configuration
 NAMESPACE="mongodb"
 MDB_RESOURCE_NAME="mdb-rs"
-MDB_VERSION="8.0.15-ent"
+MDB_VERSION="8.2.1-ent"
 
 # Step 1: Clean Operator Installation
 log_step "Step 1: Ensuring Clean Operator Installation"
@@ -368,27 +368,33 @@ NGINX
 fi
 
 # Install MongoDB version from repository
-log_info "Installing MongoDB Enterprise 8.0.15 RHEL 8 from repository..."
+log_info "Installing MongoDB Enterprise 8.2+ RHEL 8 from repository..."
 
-# Check if we have the x86_64 version (preferred) or ARM64 version
-if [ -f "backend/opsmanagerfiles/mongodb-linux-x86_64-enterprise-rhel80-8.0.15.tgz" ]; then
-    MONGODB_BINARY="backend/opsmanagerfiles/mongodb-linux-x86_64-enterprise-rhel80-8.0.15.tgz"
-    log_info "Using x86_64 version"
-elif [ -f "backend/opsmanagerfiles/mongodb-linux-aarch64-enterprise-rhel8-8.0.15.tgz" ]; then
-    MONGODB_BINARY="backend/opsmanagerfiles/mongodb-linux-aarch64-enterprise-rhel8-8.0.15.tgz"
-    log_warning "Using ARM64 version - ensure Ops Manager server is ARM64 compatible"
-else
-    log_error "No MongoDB RHEL 8 binary found in backend/opsmanagerfiles/"
-    log_error "Please ensure the repository is cloned with Git LFS or manually download:"
-    log_error "  curl -LO https://fastdl.mongodb.org/linux/mongodb-linux-x86_64-enterprise-rhel80-8.0.15.tgz"
-    log_error "  mkdir -p backend/opsmanagerfiles/"
-    log_error "  mv mongodb-linux-x86_64-enterprise-rhel80-8.0.15.tgz backend/opsmanagerfiles/"
+# Auto-detect latest 8.2+ Enterprise binary (x86_64 preferred, fallback to aarch64)
+LATEST_BIN=$(ls -1 \
+  backend/opsmanagerfiles/mongodb-linux-x86_64-enterprise-rhel8*-8.2*.tgz \
+  backend/opsmanagerfiles/mongodb-linux-x86_64-enterprise-rhel80-8.2*.tgz \
+  backend/opsmanagerfiles/mongodb-linux-aarch64-enterprise-rhel8-8.2*.tgz \
+  2>/dev/null | sort -V | tail -n1)
+
+if [ -z "$LATEST_BIN" ]; then
+    log_error "No MongoDB Enterprise 8.2+ RHEL8 tgz found in backend/opsmanagerfiles/"
+    log_error "Please place an 8.2.x tgz (e.g., mongodb-linux-x86_64-enterprise-rhel8-8.2.1.tgz) in that folder."
     exit 1
+fi
+
+MONGODB_BINARY="$LATEST_BIN"
+
+if echo "$MONGODB_BINARY" | grep -q "aarch64"; then
+    log_warning "Using ARM64 binary - ensure Ops Manager host is ARM64 compatible"
+else
+    log_info "Using x86_64 binary: $(basename "$MONGODB_BINARY")"
 fi
 
 log_info "Copying MongoDB binary to Ops Manager..."
 sudo cp "$MONGODB_BINARY" /opt/mongodb/mms/mongodb-releases/
-sudo chown mongodb-mms:mongodb-mms /opt/mongodb/mms/mongodb-releases/$(basename "$MONGODB_BINARY")
+sudo chown mongodb-mms:mongodb-mms \
+  "/opt/mongodb/mms/mongodb-releases/$(basename "$MONGODB_BINARY")"
 
 log_success "MongoDB RHEL 8 version installed in Ops Manager"
 
