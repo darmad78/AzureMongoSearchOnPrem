@@ -423,7 +423,7 @@ metadata:
 data:
   projectName: "${PROJECT_ID}"
   orgId: "${ORG_ID}"
-  baseUrl: "${OPS_MANAGER_URL}"
+  baseUrl: "http://ops-manager.ops-manager.svc.cluster.local:8080"
   authType: DIGEST
 ---
 apiVersion: v1

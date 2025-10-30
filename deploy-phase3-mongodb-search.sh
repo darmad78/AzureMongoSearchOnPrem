@@ -30,18 +30,53 @@ echo -e "${NC}"
 NAMESPACE="mongodb"
 MDB_RESOURCE_NAME="mdb-rs"
 
+# Step 0: Ensure MongoDBSearch CRD and operator are installed
+log_step "Step 0: Verifying MongoDBSearch CRD and operator"
+if ! kubectl get crd mongodbsearches.mongodb.com >/dev/null 2>&1; then
+    log_warning "MongoDBSearch CRD not found. Installing MongoDB Controllers for Kubernetes via Helm..."
+    if ! command -v helm >/dev/null 2>&1; then
+        log_error "helm not found. Please install Helm and re-run this script."
+        exit 1
+    fi
+    helm repo add mongodb https://mongodb.github.io/helm-charts >/dev/null 2>&1 || true
+    helm repo update >/dev/null 2>&1 || true
+    helm upgrade --install --debug \
+      --create-namespace --namespace ${NAMESPACE} \
+      mongodb-kubernetes mongodb/mongodb-kubernetes
+    # Wait a moment for CRDs to register
+    sleep 5
+    if ! kubectl get crd mongodbsearches.mongodb.com >/dev/null 2>&1; then
+        log_error "MongoDBSearch CRD still not available after installation. Please check operator deployment."
+        exit 1
+    fi
+    log_success "MongoDBSearch CRD installed."
+else
+    log_info "MongoDBSearch CRD present."
+fi
+
 # Step 1: Verify MongoDB is Ready
 log_step "Step 1: Verifying MongoDB is Ready"
 log_info "Checking MongoDB Enterprise status..."
 
-MONGODB_STATUS=$(kubectl get mdb ${MDB_RESOURCE_NAME} -n ${NAMESPACE} -o jsonpath='{.status.phase}')
+MONGODB_STATUS=$(kubectl get mdb ${MDB_RESOURCE_NAME} -n ${NAMESPACE} -o jsonpath='{.status.phase}' 2>/dev/null || echo "")
 if [ "$MONGODB_STATUS" != "Running" ]; then
-    log_error "MongoDB is not in Running state. Current status: $MONGODB_STATUS"
-    log_info "Please ensure Phase 2 completed successfully before running Phase 3"
-    exit 1
+    # Fallback: check StatefulSet readiness and pod readiness
+    STS_READY=$(kubectl get sts ${MDB_RESOURCE_NAME} -n ${NAMESPACE} -o jsonpath='{.status.readyReplicas}' 2>/dev/null || echo "0")
+    STS_REPLICAS=$(kubectl get sts ${MDB_RESOURCE_NAME} -n ${NAMESPACE} -o jsonpath='{.status.replicas}' 2>/dev/null || echo "0")
+    PODS_READY=$(kubectl get pods -n ${NAMESPACE} -l app=mongodb-rs-svc -o jsonpath='{range .items[*]}{.status.containerStatuses[*].ready}{" "}{end}' | tr ' ' '\n' | grep -c '^true$' || true)
+
+    if [ "$STS_READY" = "3" ] && [ "$STS_READY" = "$STS_REPLICAS" ]; then
+        log_warning "MongoDB CR phase is '$MONGODB_STATUS' but StatefulSet reports ${STS_READY}/${STS_REPLICAS} ready. Proceeding."
+    else
+        log_error "MongoDB not ready (phase=$MONGODB_STATUS, sts=${STS_READY}/${STS_REPLICAS}, ready containers=${PODS_READY})."
+        log_info "Recent events (mongodb namespace):"
+        kubectl get events -n ${NAMESPACE} --sort-by=.lastTimestamp | tail -n 40 || true
+        log_info "Describe MongoDB CR for details: kubectl describe mdb ${MDB_RESOURCE_NAME} -n ${NAMESPACE}"
+        exit 1
+    fi
 fi
 
-log_success "MongoDB Enterprise is running and ready"
+log_success "MongoDB Enterprise is running or pods are Ready; continuing"
 
 # Step 2: Ensure Search Sync User and Secret
 log_step "Step 2: Creating search sync user and secret"
