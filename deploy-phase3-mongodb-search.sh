@@ -109,6 +109,19 @@ spec:
     db: admin
 EOF
 
+# Create keyfile secret required by mongot if missing
+log_info "Ensuring mongot keyfile secret exists..."
+if ! kubectl get secret ${MDB_RESOURCE_NAME}-search-keyfile -n ${NAMESPACE} >/dev/null 2>&1; then
+  KEY_MATERIAL=$(head -c 756 /dev/urandom | base64)
+  kubectl create secret generic ${MDB_RESOURCE_NAME}-search-keyfile \
+    -n ${NAMESPACE} \
+    --from-literal=keyfile="${KEY_MATERIAL}" \
+    --dry-run=client -o yaml | kubectl apply -f -
+  log_success "Created secret ${MDB_RESOURCE_NAME}-search-keyfile"
+else
+  log_info "Secret ${MDB_RESOURCE_NAME}-search-keyfile already exists"
+fi
+
 # Step 3: Deploy MongoDB Search
 log_step "Step 3: Deploying MongoDB Search"
 log_info "Deploying MongoDB Search (mongot) with proper resource requirements..."
