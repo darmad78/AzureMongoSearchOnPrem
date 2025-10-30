@@ -329,16 +329,45 @@ else
     log_info "Check status in 1-2 minutes with: curl http://localhost:9000"
 fi
 
+# Optional: front OM with nginx on :80 → :9000 if 8080 DNAT is detected or forced
+if sudo nft list ruleset 2>/dev/null | grep -qi 'tcp dport 8080 dnat' || [ "${OM_PROXY_80:-false}" = "true" ]; then
+  log_info "Setting up nginx reverse proxy on :80 → :9000 (avoid 8080 DNAT conflicts)..."
+  sudo apt-get update -y && sudo apt-get install -y nginx
+  sudo tee /etc/nginx/sites-available/ops-manager >/dev/null <<'NGINX'
+server {
+  listen 80 default_server;
+  server_name _;
+  location / {
+    proxy_pass http://127.0.0.1:9000;
+    proxy_set_header Host $host;
+    proxy_set_header X-Forwarded-For $remote_addr;
+  }
+}
+NGINX
+  sudo ln -sf /etc/nginx/sites-available/ops-manager /etc/nginx/sites-enabled/default
+  sudo systemctl restart nginx
+  log_warning "Open TCP:80 in GCP firewall before accessing the UI externally."
+fi
+
 # Step 10: Get Access Information
 log_step "Step 10: Ops Manager Access Information"
 
 OPS_MANAGER_URL="http://${VM_IP}:9000"
 
+# If nginx proxy is set, prefer port 80 for external access info
+if systemctl is-active --quiet nginx; then
+  OPS_MANAGER_URL="http://${VM_IP}:80"
+fi
+
 echo -e "${GREEN}🎉 Ops Manager setup complete!${NC}"
 echo -e "${BLUE}📋 Access Information:${NC}"
 echo "   URL: ${OPS_MANAGER_URL}"
 echo "   VM IP: ${VM_IP}"
-echo "   Port: 9000"
+if systemctl is-active --quiet nginx; then
+  echo "   Port: 80 (proxied to 9000)"
+else
+  echo "   Port: 9000"
+fi
 echo ""
 echo -e "${BLUE}📋 MongoDB Backend Information:${NC}"
 echo "   Accessible at: $NODE_IP:$NODE_PORT"

@@ -345,23 +345,26 @@ echo "   • Go to Ops Manager: http://${VM_IP}:8080"
 echo "   • Organization Settings → General"
 echo "   • Set 'URL to Access Ops Manager' to: http://${VM_IP}:8080"
 echo ""
-read -p "Press Enter after fixing the Ops Manager configuration..."
+read -p "Press Enter after configuring the Ops Manager URL..."
 
-# Check and fix Ops Manager config file
-log_info "Checking Ops Manager configuration file..."
-if [ -f "/opt/mongodb/mms/conf/conf-mms.properties" ]; then
-    log_info "Found Ops Manager config file. Checking current settings..."
-    grep -i "centralUrl\|mms.centralUrl" /opt/mongodb/mms/conf/conf-mms.properties || echo "No centralUrl found in config"
-    
-    log_info "Updating Ops Manager config to use port 8080..."
-    sudo sed -i 's/8888/8080/g' /opt/mongodb/mms/conf/conf-mms.properties
-    
-    log_info "Restarting Ops Manager to apply changes..."
-    sudo systemctl restart mongodb-mms
-    
-    log_success "Ops Manager restarted with updated configuration"
-else
-    log_warning "Ops Manager config file not found. Please check manually."
+# Optional: front OM with nginx on :80 if 8080 DNAT is detected or forced
+if sudo nft list ruleset | grep -qi 'tcp dport 8080 dnat' || [ "${OM_PROXY_80:-false}" = "true" ]; then
+  log_info "Setting up nginx reverse proxy on :80 → :8080..."
+  sudo apt-get update -y && sudo apt-get install -y nginx
+  sudo tee /etc/nginx/sites-available/ops-manager >/dev/null <<'NGINX'
+server {
+  listen 80 default_server;
+  server_name _;
+  location / {
+    proxy_pass http://127.0.0.1:8080;
+    proxy_set_header Host $host;
+    proxy_set_header X-Forwarded-For $remote_addr;
+  }
+}
+NGINX
+  sudo ln -sf /etc/nginx/sites-available/ops-manager /etc/nginx/sites-enabled/default
+  sudo systemctl restart nginx
+  log_warning "Open TCP:80 in GCP firewall before accessing the UI externally."
 fi
 
 # Install MongoDB version from repository
