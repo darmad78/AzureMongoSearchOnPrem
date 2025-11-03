@@ -30,33 +30,6 @@ echo -e "${NC}"
 NAMESPACE="mongodb"
 MDB_RESOURCE_NAME="mdb-rs"
 
-# Step 0: Ensure MongoDBSearch CRD and operator are installed
-log_step "Step 0: Verifying MongoDBSearch CRD and operator"
-# Support both CRD names seen across chart versions
-if ! kubectl get crd mongodbsearch.mongodb.com >/dev/null 2>&1 && \
-   ! kubectl get crd mongodbsearches.mongodb.com >/dev/null 2>&1; then
-    log_warning "MongoDBSearch CRD not found. Installing MongoDB Controllers for Kubernetes via Helm..."
-    if ! command -v helm >/dev/null 2>&1; then
-        log_error "helm not found. Please install Helm and re-run this script."
-        exit 1
-    fi
-    helm repo add mongodb https://mongodb.github.io/helm-charts >/dev/null 2>&1 || true
-    helm repo update >/dev/null 2>&1 || true
-    helm upgrade --install --debug \
-      --create-namespace --namespace ${NAMESPACE} \
-      mongodb-kubernetes mongodb/mongodb-kubernetes
-    # Wait a moment for CRDs to register
-    sleep 5
-    if ! kubectl get crd mongodbsearch.mongodb.com >/dev/null 2>&1 && \
-       ! kubectl get crd mongodbsearches.mongodb.com >/dev/null 2>&1; then
-        log_error "MongoDBSearch CRD still not available after installation. Please check operator deployment."
-        exit 1
-    fi
-    log_success "MongoDBSearch CRD installed."
-else
-    log_info "MongoDBSearch CRD present."
-fi
-
 # Step 1: Verify MongoDB is Ready
 log_step "Step 1: Verifying MongoDB is Ready"
 log_info "Checking MongoDB Enterprise status..."
@@ -109,18 +82,7 @@ spec:
     db: admin
 EOF
 
-# Create keyfile secret required by mongot if missing
-log_info "Ensuring mongot keyfile secret exists..."
-if ! kubectl get secret ${MDB_RESOURCE_NAME}-search-keyfile -n ${NAMESPACE} >/dev/null 2>&1; then
-  KEY_MATERIAL=$(head -c 756 /dev/urandom | base64)
-  kubectl create secret generic ${MDB_RESOURCE_NAME}-search-keyfile \
-    -n ${NAMESPACE} \
-    --from-literal=keyfile="${KEY_MATERIAL}" \
-    --dry-run=client -o yaml | kubectl apply -f -
-  log_success "Created secret ${MDB_RESOURCE_NAME}-search-keyfile"
-else
-  log_info "Secret ${MDB_RESOURCE_NAME}-search-keyfile already exists"
-fi
+log_success "Search sync user created"
 
 # Step 3: Deploy MongoDB Search
 log_step "Step 3: Deploying MongoDB Search"
@@ -133,6 +95,8 @@ metadata:
   name: ${MDB_RESOURCE_NAME}
   namespace: ${NAMESPACE}
 spec:
+  # no need to specify source.mongodbResourceRef if MongoDBSearch CR has the same name as MongoDB CR
+  # the operator infer it automatically
   resourceRequirements:
     limits:
       cpu: "3"
@@ -143,9 +107,8 @@ spec:
 EOF
 
 log_info "Waiting for MongoDBSearch resource to reach Running phase..."
-# Support both resource names depending on CRD variant
-kubectl wait --for=jsonpath='{.status.phase}'=Running "mongodbsearch/${MDB_RESOURCE_NAME}" -n ${NAMESPACE} --timeout=300s \
-  || kubectl wait --for=jsonpath='{.status.phase}'=Running "mdbs/${MDB_RESOURCE_NAME}" -n ${NAMESPACE} --timeout=300s
+# Using mdbs/ (plural) as per MongoDB guide
+kubectl wait --for=jsonpath='{.status.phase}'=Running "mdbs/${MDB_RESOURCE_NAME}" -n ${NAMESPACE} --timeout=300s
 
 log_success "MongoDB Search deployed and running"
 
@@ -203,15 +166,15 @@ echo ""
 # Step 6: How to monitor (3 key commands)
 log_step "Step 6: Monitoring Commands"
 echo "1) Watch CR status (phase should become Running):"
-echo "   kubectl get mongodbsearch/${MDB_RESOURCE_NAME} -n ${NAMESPACE} -w || kubectl get mdbs/${MDB_RESOURCE_NAME} -n ${NAMESPACE} -w"
+echo "   kubectl get mdbs/${MDB_RESOURCE_NAME} -n ${NAMESPACE} -w"
 echo "   # Look for: PHASE=Running"
 echo ""
 echo "2) Watch pods readiness (containers should be 1/1 Ready):"
 echo "   kubectl get pods -n ${NAMESPACE} -w"
 echo "   # Look for: mdb-rs-search-<n> pods Ready 1/1"
 echo ""
-echo "3) Operator logs (check for reconcile errors):"
-echo "   kubectl logs -n ${NAMESPACE} deploy/mongodb-kubernetes-operator -f --tail=200"
+echo "3) Enterprise Operator logs (check for reconcile errors):"
+echo "   kubectl logs -n mongodb-enterprise-operator deploy/mongodb-enterprise-operator -f --tail=200"
 echo "   # Look for: no errors, successful reconcile for MongoDBSearch"
 
 log_success "Phase 3 complete! MongoDB Search is running."
