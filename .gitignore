@@ -145,3 +145,6 @@ backend/opsmanagerfiles/*.tgz
 
 # Ignore Ops Manager MongoDB binaries
 backend/opsmanagerfiles/*.tgz
+
+# Ignore Ops Manager MongoDB binaries
+backend/opsmanagerfiles/*.tgz

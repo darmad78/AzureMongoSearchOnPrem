@@ -548,13 +548,193 @@ else
   log_success "Environment variables verified in MongoDB CR"
 fi
 
+# Step 5.5: Automatically create deployment in Ops Manager via API
+log_step "Step 5.5: Creating deployment in Ops Manager"
+log_info "Automatically registering MongoDB deployment with Ops Manager..."
+
+# Get credentials from secret
+PUBLIC_API_KEY=$(kubectl get secret om-credentials -n ${NAMESPACE} -o jsonpath='{.data.publicApiKey}' | base64 -d)
+PRIVATE_API_KEY=$(kubectl get secret om-credentials -n ${NAMESPACE} -o jsonpath='{.data.privateApiKey}' | base64 -d)
+
+if [ -z "${PUBLIC_API_KEY}" ] || [ -z "${PRIVATE_API_KEY}" ]; then
+  log_warning "API keys not found. Deployment must be created manually in Ops Manager UI."
+  log_warning "Go to ${OPS_MANAGER_URL} and create a Replica Set deployment named '${MDB_RESOURCE_NAME}' with 3 members."
+else
+  # Create authentication header (Digest authentication)
+  AUTH_HEADER=$(printf "%s:%s" "${PUBLIC_API_KEY}" "${PRIVATE_API_KEY}" | base64)
+  
+  # Attempt to automatically create deployment in Ops Manager via API
+  log_info "Attempting to automatically create deployment in Ops Manager..."
+  
+  # Get current automation config using the agent endpoint (more direct)
+  # Note: Using PROJECT_ID (not ORG_ID) as automation config is project-scoped
+  CURRENT_CONFIG=$(curl -s --digest \
+    -u "${PUBLIC_API_KEY}:${PRIVATE_API_KEY}" \
+    "${OPS_MANAGER_URL}/agents/api/automation/conf/v1/${PROJECT_ID}" \
+    -H "Content-Type: application/json" || echo "")
+  
+  if [ -z "${CURRENT_CONFIG}" ] || echo "${CURRENT_CONFIG}" | grep -q '"error"'; then
+    log_warning "Could not fetch automation config from Ops Manager API."
+    log_warning "Deployment must be created manually in Ops Manager UI: ${OPS_MANAGER_URL}"
+    read -p "Press ENTER once you have created the deployment, or Ctrl+C to exit..."
+  else
+    # Check if deployment already exists
+    if echo "${CURRENT_CONFIG}" | grep -q "\"name\":\"${MDB_RESOURCE_NAME}\""; then
+      log_success "Deployment '${MDB_RESOURCE_NAME}' already exists in Ops Manager"
+    else
+      log_info "Deployment not found. Automatically creating deployment in Ops Manager via API..."
+      
+      # Parse current config and add new processes and replica set
+      # We'll use Python/jq if available, or construct JSON manually
+      if command -v python3 >/dev/null 2>&1; then
+        log_info "Using Python to construct automation config..."
+        
+        # Create automation config update
+        # Write current config to temp file for Python to read
+        TEMP_CONFIG_FILE=$(mktemp)
+        echo "${CURRENT_CONFIG}" > "${TEMP_CONFIG_FILE}"
+        
+        # Read the config in Python and construct the update
+        UPDATED_CONFIG=$(python3 <<EOF
+import json
+import sys
+
+# Read current config from file
+config_file = "${TEMP_CONFIG_FILE}"
+with open(config_file, "r") as f:
+    current = json.load(f)
+
+# Create process definitions for each member (using correct structure)
+processes = []
+for i in range(3):
+    hostname = "${MDB_RESOURCE_NAME}-${i}.${MDB_RESOURCE_NAME}-svc.${NAMESPACE}.svc.cluster.local"
+    process = {
+        "name": "${MDB_RESOURCE_NAME}-${i}",
+        "processType": "mongod",
+        "version": "${MDB_VERSION}",
+        "featureCompatibilityVersion": "8.0",
+        "hostname": hostname,
+        "args2_6": {
+            "net": {
+                "port": 27017,
+                "tls": {
+                    "mode": "disabled"
+                }
+            },
+            "replication": {
+                "replSetName": "${MDB_RESOURCE_NAME}"
+            },
+            "storage": {
+                "dbPath": "/data"
+            },
+            "systemLog": {
+                "destination": "file",
+                "path": "/var/log/mongodb-mms-automation/mongodb.log"
+            }
+        }
+    }
+    processes.append(process)
+
+# Replace processes array (don't extend - replace empty array)
+current["cluster"]["processes"] = processes
+
+# Update auth section if needed (ensure auth is not disabled)
+if "auth" in current["cluster"]:
+    current["cluster"]["auth"]["disabled"] = False
+    if "deploymentAuthMechanisms" not in current["cluster"]["auth"]:
+        current["cluster"]["auth"]["deploymentAuthMechanisms"] = ["SCRAM-SHA-256"]
+    if "autoAuthMechanisms" not in current["cluster"]["auth"]:
+        current["cluster"]["auth"]["autoAuthMechanisms"] = ["SCRAM-SHA-256"]
+
+# Create replica set definition (members use process name, not full hostname)
+replica_set = {
+    "_id": "${MDB_RESOURCE_NAME}",
+    "members": [
+        {"_id": i, "host": "${MDB_RESOURCE_NAME}-${i}", "priority": 1, "votes": 1}
+        for i in range(3)
+    ]
+}
+
+# Replace replicaSets array
+current["cluster"]["replicaSets"] = [replica_set]
+
+# Output updated config
+print(json.dumps(current))
+EOF
+)
+        
+        if [ -n "${UPDATED_CONFIG}" ] && echo "${UPDATED_CONFIG}" | grep -q "${MDB_RESOURCE_NAME}"; then
+          # Write updated config to temp file (like user's script approach)
+          echo "${UPDATED_CONFIG}" > "${TEMP_CONFIG_FILE}"
+          
+          # POST updated config to Ops Manager using the agent endpoint (same as user's script)
+          log_info "Posting automation config to Ops Manager..."
+          RESPONSE=$(curl -s -w "\n%{http_code}" -X PUT \
+            --digest \
+            -u "${PUBLIC_API_KEY}:${PRIVATE_API_KEY}" \
+            "${OPS_MANAGER_URL}/agents/api/automation/conf/v1/${PROJECT_ID}" \
+            -H "Content-Type: application/json" \
+            --data "@${TEMP_CONFIG_FILE}" || echo "")
+          
+          HTTP_CODE=$(echo "${RESPONSE}" | tail -n1)
+          if [ "${HTTP_CODE}" = "200" ] || [ "${HTTP_CODE}" = "201" ]; then
+            log_success "Deployment '${MDB_RESOURCE_NAME}' successfully created in Ops Manager!"
+            log_info "Waiting for automation agent to receive new configuration..."
+            sleep 10
+          else
+            log_warning "Failed to create deployment via API (HTTP ${HTTP_CODE})."
+            log_warning "Response: $(echo "${RESPONSE}" | head -n -1)"
+            log_warning "Please create the deployment manually in Ops Manager UI: ${OPS_MANAGER_URL}"
+            read -p "Press ENTER once you have created the deployment, or Ctrl+C to exit..."
+          fi
+        else
+          log_warning "Failed to construct automation config. Please create deployment manually."
+          read -p "Press ENTER once you have created the deployment, or Ctrl+C to exit..."
+        fi
+        
+        # Cleanup temp file
+        rm -f "${TEMP_CONFIG_FILE}" 2>/dev/null || true
+      else
+        log_warning "Python3 not available. Cannot automatically create deployment."
+        log_warning "Please install Python3 or create the deployment manually:"
+        log_warning "Go to: ${OPS_MANAGER_URL}"
+        log_warning "Create Replica Set '${MDB_RESOURCE_NAME}' with 3 members"
+        read -p "Press ENTER once you have created the deployment, or Ctrl+C to exit..."
+      fi
+    fi
+  fi
+fi
+
 log_info "Waiting for MongoDB resource to reach Running phase..."
-kubectl wait --for=jsonpath='{.status.phase}'=Running "mdb/${MDB_RESOURCE_NAME}" -n ${NAMESPACE} --timeout=600s
+# Note: This will wait indefinitely if deployment doesn't exist in Ops Manager
+# Consider adding a timeout or check if pods are running
+TIMEOUT=600
+ELAPSED=0
+while [ ${ELAPSED} -lt ${TIMEOUT} ]; do
+  PHASE=$(kubectl get mdb ${MDB_RESOURCE_NAME} -n ${NAMESPACE} -o jsonpath='{.status.phase}' 2>/dev/null || echo "Pending")
+  if [ "${PHASE}" = "Running" ]; then
+    break
+  fi
+  sleep 5
+  ELAPSED=$((ELAPSED + 5))
+  if [ $((ELAPSED % 30)) -eq 0 ]; then
+    log_info "Still waiting for MongoDB to be Running (current phase: ${PHASE}, elapsed: ${ELAPSED}s)..."
+    log_info "If stuck in Pending, check if deployment exists in Ops Manager UI: ${OPS_MANAGER_URL}"
+  fi
+done
 
-log_success "MongoDB Enterprise deployed and running"
+if [ "${PHASE}" != "Running" ]; then
+  log_warning "MongoDB did not reach Running phase within ${TIMEOUT}s."
+  log_warning "Current phase: ${PHASE}"
+  log_warning "This is likely because the deployment doesn't exist in Ops Manager."
+  log_warning "Please create the deployment manually in Ops Manager UI: ${OPS_MANAGER_URL}"
+  log_warning "Deployment name: ${MDB_RESOURCE_NAME}, Members: 3, Version: ${MDB_VERSION}"
+else
+  log_success "MongoDB Enterprise deployed and running"
+fi
 
-# Step 5.5: Configure MongoDB server parameter for telemetry
-log_step "Step 5.5: Configuring MongoDB server telemetry parameter"
+# Step 5.75: Configure MongoDB server parameter for telemetry
+log_step "Step 5.75: Configuring MongoDB server telemetry parameter"
 log_info "Setting forceDisableTelemetry to false on MongoDB server..."
 
 # Wait for the primary to be ready
