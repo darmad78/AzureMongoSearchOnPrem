@@ -242,8 +242,26 @@ echo "   • Copy both Public and Private keys"
 echo ""
 
 # Get VM IP for Ops Manager URL
+log_info "Detecting VM IP address..."
 VM_IP=$(hostname -I | awk '{print $1}')
+
+# Validate VM IP or ask user to enter it
+if [ -z "${VM_IP}" ] || ! echo "${VM_IP}" | grep -qE '^([0-9]{1,3}\.){3}[0-9]{1,3}$'; then
+  echo -e "${YELLOW}⚠️  Could not auto-detect VM IP address.${NC}"
+  echo ""
+  echo -e "${BLUE}Please enter the internal IP address where Ops Manager is running:${NC}"
+  echo -e "${YELLOW}Example: 10.128.0.10${NC}"
+  read -p "VM Internal IP: " VM_IP
+  
+  # Validate the entered IP
+  while [ -z "${VM_IP}" ] || ! echo "${VM_IP}" | grep -qE '^([0-9]{1,3}\.){3}[0-9]{1,3}$'; do
+    echo -e "${RED}❌ Invalid IP address format. Please try again.${NC}"
+    read -p "VM Internal IP: " VM_IP
+  done
+fi
+
 OPS_MANAGER_URL="http://${VM_IP}:8080"
+log_success "Using Ops Manager URL: ${OPS_MANAGER_URL}"
 
 # Check for environment variables first
 if [ -z "$ORG_ID" ] || [ -z "$PROJECT_ID" ] || [ -z "$PUBLIC_KEY" ] || [ -z "$PRIVATE_KEY" ]; then
@@ -414,6 +432,12 @@ log_success "ServiceAccount created"
 log_step "Step 4: Creating Ops Manager Configuration"
 log_info "Creating Ops Manager configuration with provided credentials..."
 
+# Determine the base URL - use VM IP directly since Ops Manager runs on VM
+# The operator needs to be able to reach Ops Manager from within pods
+BASE_URL_VALUE="${OPS_MANAGER_URL}"
+log_info "Using VM IP for Ops Manager baseUrl: ${BASE_URL_VALUE}"
+log_info "Note: Ops Manager must be accessible from Kubernetes pods at this address"
+
 kubectl apply -f - <<EOF
 apiVersion: v1
 kind: ConfigMap
@@ -423,7 +447,7 @@ metadata:
 data:
   projectName: "${PROJECT_ID}"
   orgId: "${ORG_ID}"
-  baseUrl: "http://ops-manager.ops-manager.svc.cluster.local:8080"
+  baseUrl: "${BASE_URL_VALUE}"
   authType: DIGEST
 ---
 apiVersion: v1
@@ -468,6 +492,11 @@ spec:
       spec:
         containers:
         - name: mongodb-enterprise-database
+          env:
+          - name: HOME
+            value: /tmp
+          - name: MONGOSH_FORCE_DISABLE_TELEMETRY
+            value: "false"
           resources:
             limits:
               cpu: "2"

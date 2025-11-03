@@ -143,7 +143,9 @@ spec:
 EOF
 
 log_info "Waiting for MongoDBSearch resource to reach Running phase..."
-kubectl wait --for=jsonpath='{.status.phase}'=Running "mdbs/${MDB_RESOURCE_NAME}" -n ${NAMESPACE} --timeout=300s
+# Support both resource names depending on CRD variant
+kubectl wait --for=jsonpath='{.status.phase}'=Running "mongodbsearch/${MDB_RESOURCE_NAME}" -n ${NAMESPACE} --timeout=300s \
+  || kubectl wait --for=jsonpath='{.status.phase}'=Running "mdbs/${MDB_RESOURCE_NAME}" -n ${NAMESPACE} --timeout=300s
 
 log_success "MongoDB Search deployed and running"
 
@@ -197,6 +199,20 @@ echo ""
 echo "   # Access MongoDB shell"
 echo "   kubectl exec -it ${MDB_RESOURCE_NAME}-0 -n ${NAMESPACE} -- mongosh -u mdb-admin -p admin-user-password-CHANGE-ME --authenticationDatabase admin"
 echo ""
+
+# Step 6: How to monitor (3 key commands)
+log_step "Step 6: Monitoring Commands"
+echo "1) Watch CR status (phase should become Running):"
+echo "   kubectl get mongodbsearch/${MDB_RESOURCE_NAME} -n ${NAMESPACE} -w || kubectl get mdbs/${MDB_RESOURCE_NAME} -n ${NAMESPACE} -w"
+echo "   # Look for: PHASE=Running"
+echo ""
+echo "2) Watch pods readiness (containers should be 1/1 Ready):"
+echo "   kubectl get pods -n ${NAMESPACE} -w"
+echo "   # Look for: mdb-rs-search-<n> pods Ready 1/1"
+echo ""
+echo "3) Operator logs (check for reconcile errors):"
+echo "   kubectl logs -n ${NAMESPACE} deploy/mongodb-kubernetes-operator -f --tail=200"
+echo "   # Look for: no errors, successful reconcile for MongoDBSearch"
 
 log_success "Phase 3 complete! MongoDB Search is running."
 echo ""
