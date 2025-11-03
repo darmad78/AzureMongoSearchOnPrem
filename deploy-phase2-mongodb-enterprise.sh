@@ -481,11 +481,6 @@ spec:
   opsManager:
     configMapRef:
       name: om-project
-  agent:
-    mongod:
-      versioned: "${MDB_VERSION}"
-      setParameter:
-        forceDisableTelemetry: false
   security:
     authentication:
       enabled: true
@@ -557,6 +552,38 @@ log_info "Waiting for MongoDB resource to reach Running phase..."
 kubectl wait --for=jsonpath='{.status.phase}'=Running "mdb/${MDB_RESOURCE_NAME}" -n ${NAMESPACE} --timeout=600s
 
 log_success "MongoDB Enterprise deployed and running"
+
+# Step 5.5: Configure MongoDB server parameter for telemetry
+log_step "Step 5.5: Configuring MongoDB server telemetry parameter"
+log_info "Setting forceDisableTelemetry to false on MongoDB server..."
+
+# Wait for the primary to be ready
+PRIMARY_POD=""
+for i in {0..10}; do
+  PRIMARY_POD=$(kubectl get pods -n ${NAMESPACE} -l app=mongodb-rs-svc -o jsonpath='{.items[0].metadata.name}' 2>/dev/null || echo "")
+  if [ -n "${PRIMARY_POD}" ]; then
+    break
+  fi
+  sleep 2
+done
+
+if [ -n "${PRIMARY_POD}" ]; then
+  log_info "Setting forceDisableTelemetry parameter via primary pod: ${PRIMARY_POD}"
+  # Find mongosh binary path in the pod
+  MONGOSH_PATH=$(kubectl exec -n ${NAMESPACE} ${PRIMARY_POD} -- find /var/lib/mongodb-mms-automation -name mongosh -type f 2>/dev/null | head -n1)
+  
+  if [ -n "${MONGOSH_PATH}" ]; then
+    kubectl exec -n ${NAMESPACE} ${PRIMARY_POD} -- ${MONGOSH_PATH} \
+      --eval 'db.adminCommand({ setParameter: 1, forceDisableTelemetry: false })' \
+      -u mdb-admin -p 'admin-user-password-CHANGE-ME' --authenticationDatabase admin \
+      --quiet 2>/dev/null && log_success "MongoDB server parameter forceDisableTelemetry set to false" || \
+      log_warning "Could not set forceDisableTelemetry parameter. You may need to configure this in Ops Manager UI."
+  else
+    log_warning "Could not find mongosh binary. SetParameter will be configured by Ops Manager automation agent."
+  fi
+else
+  log_warning "Could not find primary pod. The forceDisableTelemetry parameter will be configured by Ops Manager automation agent."
+fi
 
 # Step 6: Create MongoDB Users
 log_step "Step 6: Creating MongoDB Users"
