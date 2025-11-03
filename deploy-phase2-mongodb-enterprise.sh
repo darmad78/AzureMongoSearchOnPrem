@@ -31,6 +31,88 @@ NAMESPACE="mongodb"
 MDB_RESOURCE_NAME="mdb-rs"
 MDB_VERSION="8.2.1-ent"
 
+# Step 0: Pre-flight Cleanup - Remove Old Operator Traces
+log_step "Step 0: Pre-flight Cleanup - Removing Old Operator Traces"
+
+# Check for old mongodb-kubernetes-operator
+log_info "Checking for old MongoDB Kubernetes Operator..."
+OLD_OPERATOR_PODS=$(kubectl get pods --all-namespaces -o jsonpath='{range .items[*]}{.metadata.namespace}{" "}{.metadata.name}{"\n"}{end}' 2>/dev/null | grep -i "mongodb-kubernetes-operator" || echo "")
+if [ -n "${OLD_OPERATOR_PODS}" ]; then
+    log_warning "Found old MongoDB Kubernetes Operator pods:"
+    # Process each pod/namespace (avoiding subshell issues)
+    while IFS=' ' read -r ns name; do
+        [ -z "${ns}" ] && continue
+        log_warning "  - ${name} in namespace ${ns}"
+        # Try to uninstall via Helm if it exists
+        if command -v helm &> /dev/null; then
+            log_info "Attempting to uninstall via Helm from namespace ${ns}..."
+            HELM_RELEASES=$(helm list -n ${ns} 2>/dev/null | grep -i mongodb | awk '{print $1}' || echo "")
+            if [ -n "${HELM_RELEASES}" ]; then
+                echo "${HELM_RELEASES}" | while IFS= read -r release; do
+                    [ -z "${release}" ] && continue
+                    log_info "Uninstalling Helm release: ${release} from namespace ${ns}..."
+                    helm uninstall ${release} -n ${ns} 2>/dev/null || true
+                done
+            fi
+        fi
+        # Delete the namespace
+        log_info "Deleting namespace ${ns}..."
+        kubectl delete namespace ${ns} --ignore-not-found=true || true
+    done <<< "${OLD_OPERATOR_PODS}"
+    log_success "Old operator removed"
+else
+    log_success "No old MongoDB Kubernetes Operator found"
+fi
+
+# Delete leftover validation webhooks (critical!)
+log_info "Checking for leftover validation webhooks..."
+WEBHOOKS=$(kubectl get validatingwebhookconfigurations -o jsonpath='{range .items[*]}{.metadata.name}{"\n"}{end}' 2>/dev/null | grep -i "mongodb" || echo "")
+if [ -n "${WEBHOOKS}" ]; then
+    log_warning "Found MongoDB-related webhooks that may block the new operator:"
+    while IFS= read -r webhook; do
+        [ -z "${webhook}" ] && continue
+        log_warning "  - ${webhook}"
+        log_info "Deleting webhook: ${webhook}..."
+        kubectl delete validatingwebhookconfiguration ${webhook} --ignore-not-found=true || true
+    done <<< "${WEBHOOKS}"
+    log_success "Webhooks cleaned up"
+else
+    log_success "No conflicting webhooks found"
+fi
+
+# Delete old MongoDB CRDs (if they exist)
+log_info "Checking for old MongoDB CRDs..."
+OLD_CRDS=$(kubectl get crd -o jsonpath='{range .items[*]}{.metadata.name}{"\n"}{end}' 2>/dev/null | grep -E "mongodbs\.mongodb\.com|mongodbcommunity\.mongodb\.com" || echo "")
+if [ -n "${OLD_CRDS}" ]; then
+    log_warning "Found old MongoDB CRDs:"
+    while IFS= read -r crd; do
+        [ -z "${crd}" ] && continue
+        log_warning "  - ${crd}"
+        log_info "Deleting CRD: ${crd}..."
+        kubectl delete crd ${crd} --ignore-not-found=true || true
+    done <<< "${OLD_CRDS}"
+    log_success "Old CRDs cleaned up"
+    log_info "Waiting for CRD deletion to propagate..."
+    sleep 5
+else
+    log_success "No conflicting CRDs found"
+fi
+
+# Clean up old namespaces used by the script
+log_info "Cleaning up old script namespaces (if needed)..."
+for ns in mongodb mongodb-enterprise-operator; do
+    if kubectl get namespace ${ns} &> /dev/null; then
+        log_info "Found existing namespace: ${ns}, deleting..."
+        kubectl delete namespace ${ns} --ignore-not-found=true || true
+        log_info "Waiting for namespace ${ns} to be deleted..."
+        while kubectl get namespace ${ns} &> /dev/null 2>&1; do
+            sleep 2
+        done
+    fi
+done
+
+log_success "Pre-flight cleanup complete"
+
 # Step 1: Clean Operator Installation
 log_step "Step 1: Ensuring Clean Operator Installation"
 
