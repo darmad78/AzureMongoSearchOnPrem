@@ -481,6 +481,11 @@ spec:
   opsManager:
     configMapRef:
       name: om-project
+  agent:
+    mongod:
+      versioned: "${MDB_VERSION}"
+      setParameter:
+        forceDisableTelemetry: false
   security:
     authentication:
       enabled: true
@@ -497,6 +502,19 @@ spec:
             value: /tmp
           - name: MONGOSH_FORCE_DISABLE_TELEMETRY
             value: "false"
+          lifecycle:
+            postStart:
+              exec:
+                command:
+                - /bin/sh
+                - -c
+                - |
+                  # Clean up any existing mongosh config that might have forceDisableTelemetry=true
+                  if [ -d /tmp/.mongodb/mongosh ]; then
+                    echo "Cleaning up mongosh config directory to prevent telemetry conflicts..."
+                    rm -rf /tmp/.mongodb/mongosh 2>/dev/null || true
+                    echo "Mongosh config cleanup complete"
+                  fi
           resources:
             limits:
               cpu: "2"
@@ -505,6 +523,35 @@ spec:
               cpu: "1"
               memory: 1Gi
 EOF
+
+# Verify and ensure environment variables are set correctly
+log_info "Verifying environment variables are set in MongoDB CR..."
+ENV_CHECK=$(kubectl get mdb ${MDB_RESOURCE_NAME} -n ${NAMESPACE} -o jsonpath='{.spec.podSpec.podTemplate.spec.containers[0].env[?(@.name=="HOME")].value}' 2>/dev/null || echo "")
+if [ -z "${ENV_CHECK}" ] || [ "${ENV_CHECK}" != "/tmp" ]; then
+  log_warning "Environment variables not found or incorrect. Patching MongoDB CR..."
+  kubectl patch mongodb ${MDB_RESOURCE_NAME} -n ${NAMESPACE} --type='json' -p='[
+    {
+      "op": "add",
+      "path": "/spec/podSpec/podTemplate/spec/containers/0/env",
+      "value": [
+        {"name": "HOME", "value": "/tmp"},
+        {"name": "MONGOSH_FORCE_DISABLE_TELEMETRY", "value": "false"}
+      ]
+    }
+  ]' || kubectl patch mongodb ${MDB_RESOURCE_NAME} -n ${NAMESPACE} --type='json' -p='[
+    {
+      "op": "replace",
+      "path": "/spec/podSpec/podTemplate/spec/containers/0/env",
+      "value": [
+        {"name": "HOME", "value": "/tmp"},
+        {"name": "MONGOSH_FORCE_DISABLE_TELEMETRY", "value": "false"}
+      ]
+    }
+  ]'
+  log_success "MongoDB CR patched with correct environment variables"
+else
+  log_success "Environment variables verified in MongoDB CR"
+fi
 
 log_info "Waiting for MongoDB resource to reach Running phase..."
 kubectl wait --for=jsonpath='{.status.phase}'=Running "mdb/${MDB_RESOURCE_NAME}" -n ${NAMESPACE} --timeout=600s
