@@ -159,14 +159,43 @@ else
     REPLICA_SET_NAME="mongodb-rs"
 fi
 
+# Get MongoDB credentials from secrets
+log_info "Retrieving MongoDB credentials from secrets..."
+if kubectl get secret mdb-user-password -n ${NAMESPACE} &> /dev/null; then
+    MONGODB_USER="mdb-user"
+    MONGODB_PASSWORD=$(kubectl get secret mdb-user-password -n ${NAMESPACE} -o jsonpath='{.data.password}' | base64 -d)
+elif kubectl get secret mongodb-user-password -n ${NAMESPACE} &> /dev/null; then
+    MONGODB_USER="appuser"
+    MONGODB_PASSWORD=$(kubectl get secret mongodb-user-password -n ${NAMESPACE} -o jsonpath='{.data.password}' | base64 -d)
+else
+    log_warning "Could not find MongoDB user credentials secret, using defaults"
+    MONGODB_USER="appuser"
+    MONGODB_PASSWORD="SecureUser456"
+fi
+
 MONGODB_PORT="27017"
-MONGODB_USER="appuser"
-MONGODB_PASSWORD="SecureUser456!"
 MONGODB_DB="searchdb"
 MONGODB_URL="mongodb://${MONGODB_USER}:${MONGODB_PASSWORD}@${MONGODB_SERVICE}:${MONGODB_PORT}/${MONGODB_DB}?replicaSet=${REPLICA_SET_NAME}&authSource=admin"
 
 log_info "MongoDB connection: ${MONGODB_SERVICE}:${MONGODB_PORT}"
+log_info "MongoDB user: ${MONGODB_USER}"
 log_success "MongoDB connection details retrieved"
+
+# Ensure MongoDB user has access to searchdb
+log_info "Ensuring MongoDB user has access to searchdb database..."
+if kubectl get mongodbuser ${MONGODB_USER} -n ${NAMESPACE} &> /dev/null; then
+    # Check if searchdb role exists, if not add it
+    HAS_SEARCHDB_ROLE=$(kubectl get mongodbuser ${MONGODB_USER} -n ${NAMESPACE} -o jsonpath='{.spec.roles[?(@.db=="searchdb")].db}' 2>/dev/null || echo "")
+    if [ -z "$HAS_SEARCHDB_ROLE" ]; then
+        log_info "Adding readWrite role on searchdb for ${MONGODB_USER}..."
+        kubectl patch mongodbuser ${MONGODB_USER} -n ${NAMESPACE} --type='json' \
+            -p='[{"op": "add", "path": "/spec/roles/-", "value": {"db": "searchdb", "name": "readWrite"}}]' || \
+            log_warning "Could not add searchdb role, user may need manual configuration"
+        sleep 5  # Wait for operator to apply changes
+    else
+        log_info "MongoDB user already has access to searchdb"
+    fi
+fi
 
 # Step 6: Get Ollama Connection Details
 log_step "Step 6: Retrieving Ollama Connection Details"
