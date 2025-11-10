@@ -31,6 +31,65 @@ echo -e "${NC}"
 NAMESPACE="mongodb"
 MDB_RESOURCE_NAME="mdb-rs"
 
+# Step 0: Verify Kubernetes Operator is Installed
+log_step "Step 0: Verifying Kubernetes Operator is Installed"
+log_info "Checking if MongoDB Kubernetes Operator is installed..."
+
+# Check if unified operator deployment exists
+OPERATOR_DEPLOYMENT=$(kubectl get deployment mongodb-kubernetes-operator -n ${NAMESPACE} -o name 2>/dev/null || echo "")
+if [ -z "${OPERATOR_DEPLOYMENT}" ]; then
+    log_warning "MongoDB Kubernetes Operator (unified) not found in ${NAMESPACE} namespace."
+    log_info "Checking if Helm repo is available..."
+    
+    # Check if Helm repo is added
+    if ! helm repo list | grep -q mongodb; then
+        log_info "Adding MongoDB Helm repository..."
+        helm repo add mongodb https://mongodb.github.io/helm-charts >/dev/null 2>&1 || true
+        helm repo update mongodb >/dev/null 2>&1 || true
+    fi
+    
+    log_info "Installing MongoDB Kubernetes Operator (unified operator)..."
+    helm upgrade --install \
+        --create-namespace \
+        --namespace ${NAMESPACE} \
+        mongodb-kubernetes \
+        mongodb/mongodb-kubernetes \
+        --wait --timeout=5m
+    
+    log_success "MongoDB Kubernetes Operator installed"
+else
+    log_success "MongoDB Kubernetes Operator found"
+fi
+
+# Verify unified operator is running
+log_info "Verifying unified operator is running..."
+OPERATOR_READY=$(kubectl get deployment mongodb-kubernetes-operator -n ${NAMESPACE} -o jsonpath='{.status.readyReplicas}' 2>/dev/null || echo "0")
+if [ "${OPERATOR_READY}" != "1" ]; then
+    log_info "Operator not ready yet, waiting up to 60 seconds..."
+    TIMEOUT=60
+    ELAPSED=0
+    while [ ${ELAPSED} -lt ${TIMEOUT} ]; do
+        OPERATOR_READY=$(kubectl get deployment mongodb-kubernetes-operator -n ${NAMESPACE} -o jsonpath='{.status.readyReplicas}' 2>/dev/null || echo "0")
+        if [ "${OPERATOR_READY}" = "1" ]; then
+            break
+        fi
+        sleep 5
+        ELAPSED=$((ELAPSED + 5))
+    done
+    
+    if [ "${OPERATOR_READY}" != "1" ]; then
+        log_error "Unified operator is not ready after ${TIMEOUT}s (readyReplicas=${OPERATOR_READY})"
+        log_info "Checking operator pods..."
+        kubectl get pods -n ${NAMESPACE} | grep mongodb-kubernetes-operator || true
+        log_info "Checking operator logs..."
+        kubectl logs -n ${NAMESPACE} -l app.kubernetes.io/name=mongodb-kubernetes-operator --tail=20 || true
+        exit 1
+    fi
+fi
+
+log_success "Unified operator is running and ready"
+log_info "The unified operator watches: mongodb, opsmanagers, mongodbusers, mongodbcommunity, and mongodbsearch resources"
+
 # Step 1: Verify MongoDB is Ready
 log_step "Step 1: Verifying MongoDB is Ready"
 log_info "Checking MongoDB Enterprise status..."
@@ -55,7 +114,7 @@ fi
 log_success "MongoDB Enterprise is running or pods are Ready; continuing"
 
 # Step 2: Ensure Search Sync User and Secret
-log_step "Step 2: Creating search sync user and secret"
+log_step "Step 2: Creating Search Sync User and Secret"
 log_info "Creating secret for search sync user (if not exists)..."
 
 kubectl create secret generic ${MDB_RESOURCE_NAME}-search-sync-source-password \

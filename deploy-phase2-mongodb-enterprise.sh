@@ -98,193 +98,99 @@ else
     log_success "No conflicting CRDs found"
 fi
 
-# Clean up old namespaces used by the script
-log_info "Cleaning up old script namespaces (if needed)..."
-for ns in mongodb mongodb-enterprise-operator; do
-    if kubectl get namespace ${ns} &> /dev/null; then
-        log_info "Found existing namespace: ${ns}, deleting..."
-        kubectl delete namespace ${ns} --ignore-not-found=true || true
-        log_info "Waiting for namespace ${ns} to be deleted..."
-        while kubectl get namespace ${ns} &> /dev/null 2>&1; do
-            sleep 2
-        done
+# Clean up old deprecated enterprise-operator (but keep mongodb namespace - we'll use it)
+log_info "Cleaning up deprecated Enterprise Operator (if needed)..."
+if kubectl get namespace mongodb-enterprise-operator &> /dev/null; then
+    log_warning "Found deprecated Enterprise Operator namespace."
+    
+    # First, try to uninstall via Helm if it exists
+    if command -v helm &> /dev/null; then
+        log_info "Checking for Enterprise Operator Helm releases..."
+        HELM_RELEASES=$(helm list -n mongodb-enterprise-operator 2>/dev/null | grep -i "enterprise\|mongodb" | awk '{print $1}' || echo "")
+        if [ -n "${HELM_RELEASES}" ]; then
+            while IFS= read -r release; do
+                [ -z "${release}" ] && continue
+                log_info "Uninstalling Helm release: ${release} from namespace mongodb-enterprise-operator..."
+                helm uninstall ${release} -n mongodb-enterprise-operator --ignore-not-found=true 2>/dev/null || true
+            done <<< "${HELM_RELEASES}"
+            log_info "Waiting for Helm uninstall to complete..."
+            sleep 5
+        fi
     fi
-done
+    
+    # Delete the namespace (this will cascade delete all resources)
+    log_info "Deleting deprecated Enterprise Operator namespace..."
+    kubectl delete namespace mongodb-enterprise-operator --ignore-not-found=true || true
+    log_info "Waiting for deprecated namespace to be deleted..."
+    TIMEOUT=120
+    ELAPSED=0
+    while kubectl get namespace mongodb-enterprise-operator &> /dev/null 2>&1 && [ ${ELAPSED} -lt ${TIMEOUT} ]; do
+        sleep 2
+        ELAPSED=$((ELAPSED + 2))
+    done
+    
+    if kubectl get namespace mongodb-enterprise-operator &> /dev/null 2>&1; then
+        log_warning "Namespace deletion taking longer than expected. Proceeding anyway..."
+    else
+        log_success "Deprecated Enterprise Operator namespace cleaned"
+    fi
+fi
+
+# Also check for enterprise-operator pods in any namespace
+log_info "Checking for Enterprise Operator pods in any namespace..."
+ENTERPRISE_OPERATOR_PODS=$(kubectl get pods --all-namespaces -o jsonpath='{range .items[*]}{.metadata.namespace}{" "}{.metadata.name}{"\n"}{end}' 2>/dev/null | grep -i "mongodb-enterprise-operator" || echo "")
+if [ -n "${ENTERPRISE_OPERATOR_PODS}" ]; then
+    log_warning "Found Enterprise Operator pods still running:"
+    while IFS=' ' read -r ns name; do
+        [ -z "${ns}" ] && continue
+        log_warning "  - ${name} in namespace ${ns}"
+        log_info "Deleting pod ${name} in namespace ${ns}..."
+        kubectl delete pod ${name} -n ${ns} --ignore-not-found=true || true
+    done <<< "${ENTERPRISE_OPERATOR_PODS}"
+    log_info "Waiting for pods to be deleted..."
+    sleep 5
+fi
 
 log_success "Pre-flight cleanup complete"
 
-# Step 1: Clean Operator Installation
-log_step "Step 1: Ensuring Clean Operator Installation"
+# Step 1: Install Unified MongoDB Controllers for Kubernetes Operator
+log_step "Step 1: Installing Unified MongoDB Controllers for Kubernetes Operator"
 
-# Check if operator namespace exists and clean it if needed
-if kubectl get namespace mongodb-enterprise-operator &> /dev/null; then
-    log_info "Found existing operator namespace, cleaning it..."
-    kubectl delete namespace mongodb-enterprise-operator --ignore-not-found=true
-    log_info "Waiting for namespace deletion to complete..."
-    while kubectl get namespace mongodb-enterprise-operator &> /dev/null; do
-        sleep 2
-    done
-    log_success "Operator namespace cleaned"
+# The old Enterprise Operator is deprecated. We now use the unified operator.
+log_info "Installing MongoDB Controllers for Kubernetes Operator (unified operator)..."
+
+# Check if Helm repo is added
+if ! helm repo list | grep -q mongodb; then
+    log_info "Adding MongoDB Helm repository..."
+    helm repo add mongodb https://mongodb.github.io/helm-charts >/dev/null 2>&1 || true
+    helm repo update >/dev/null 2>&1 || true
 fi
 
-# Reinstall the operator cleanly
-log_info "Installing MongoDB Enterprise Operator..."
-helm install mongodb-enterprise-operator mongodb/enterprise-operator \
-    --namespace mongodb-enterprise-operator \
+# Install the unified operator in the mongodb namespace (as per the guide)
+log_info "Installing unified MongoDB Controllers for Kubernetes Operator..."
+helm upgrade --install \
     --create-namespace \
-    --set "watchNamespace=" \
-    --wait
+    --namespace ${NAMESPACE} \
+    mongodb-kubernetes \
+    mongodb/mongodb-kubernetes \
+    --wait --timeout=5m
 
-log_success "MongoDB Enterprise Operator installed successfully"
+log_success "MongoDB Controllers for Kubernetes Operator installed successfully"
 
-# Fix WATCH_NAMESPACE to watch all namespaces
-log_info "Fixing WATCH_NAMESPACE to watch all namespaces..."
-log_warning "This requires manual intervention. Please run the following command:"
-echo ""
-echo "kubectl edit deployment mongodb-enterprise-operator -n mongodb-enterprise-operator"
-echo ""
-echo "In the editor, find the WATCH_NAMESPACE section and change it from:"
-echo "  - name: WATCH_NAMESPACE"
-echo "    valueFrom:"
-echo "      fieldRef:"
-echo "        apiVersion: v1"
-echo "        fieldPath: metadata.namespace"
-echo ""
-echo "To:"
-echo "  - name: WATCH_NAMESPACE"
-echo "    value: \"\""
-echo ""
-echo "Then save and exit (in vim: Esc, then :wq, Enter)"
-echo ""
-read -p "Press Enter after you've made the change and the deployment has restarted..."
-
-log_info "Verifying WATCH_NAMESPACE fix..."
-WATCH_NS=$(kubectl get deployment mongodb-enterprise-operator -n mongodb-enterprise-operator -o jsonpath='{.spec.template.spec.containers[0].env[?(@.name=="WATCH_NAMESPACE")].value}')
-if [ "$WATCH_NS" = "" ]; then
-    log_success "WATCH_NAMESPACE is correctly set to empty string"
-else
-    log_error "WATCH_NAMESPACE is still set to: $WATCH_NS"
-    log_error "Please fix this manually before continuing"
+# Verify unified operator is running and watching the correct resources
+log_info "Verifying unified operator is running..."
+OPERATOR_READY=$(kubectl get deployment mongodb-kubernetes-operator -n ${NAMESPACE} -o jsonpath='{.status.readyReplicas}' 2>/dev/null || echo "0")
+if [ "${OPERATOR_READY}" != "1" ]; then
+    log_error "Unified operator is not ready (readyReplicas=${OPERATOR_READY})"
+    log_info "Checking operator pods..."
+    kubectl get pods -n ${NAMESPACE} | grep mongodb-kubernetes-operator || true
+    log_info "Checking operator logs..."
+    kubectl logs -n ${NAMESPACE} -l app.kubernetes.io/name=mongodb-kubernetes-operator --tail=20 || true
     exit 1
 fi
 
-# Fix RBAC permissions for cluster-wide access
-log_info "Setting up cluster-wide RBAC permissions..."
-log_info "Creating/updating ClusterRole with all necessary permissions..."
-kubectl apply -f - <<EOF
-apiVersion: rbac.authorization.k8s.io/v1
-kind: ClusterRole
-metadata:
-  name: mongodb-enterprise-operator-cluster
-rules:
-- apiGroups:
-  - ""
-  resources:
-  - services
-  verbs:
-  - get
-  - list
-  - watch
-  - create
-  - update
-  - delete
-- apiGroups:
-  - ""
-  resources:
-  - secrets
-  - configmaps
-  verbs:
-  - get
-  - list
-  - create
-  - update
-  - delete
-  - watch
-- apiGroups:
-  - apps
-  resources:
-  - statefulsets
-  verbs:
-  - create
-  - get
-  - list
-  - watch
-  - delete
-  - update
-- apiGroups:
-  - ""
-  resources:
-  - pods
-  verbs:
-  - get
-  - list
-  - watch
-  - delete
-  - deletecollection
-- apiGroups:
-  - mongodb.com
-  resources:
-  - mongodb
-  - mongodb/finalizers
-  - mongodbusers
-  - mongodbusers/finalizers
-  - opsmanagers
-  - opsmanagers/finalizers
-  - mongodbmulticluster
-  - mongodbmulticluster/finalizers
-  - mongodb/status
-  - mongodbusers/status
-  - opsmanagers/status
-  - mongodbmulticluster/status
-  verbs:
-  - '*'
-- apiGroups:
-  - ""
-  resources:
-  - persistentvolumeclaims
-  verbs:
-  - get
-  - delete
-  - list
-  - watch
-  - patch
-  - update
-- apiGroups:
-  - ""
-  resources:
-  - namespaces
-  verbs:
-  - get
-  - list
-  - watch
----
-apiVersion: rbac.authorization.k8s.io/v1
-kind: ClusterRoleBinding
-metadata:
-  name: mongodb-enterprise-operator-cluster
-roleRef:
-  apiGroup: rbac.authorization.k8s.io
-  kind: ClusterRole
-  name: mongodb-enterprise-operator-cluster
-subjects:
-- kind: ServiceAccount
-  name: mongodb-enterprise-operator
-  namespace: mongodb-enterprise-operator
-EOF
-
-log_success "Cluster-wide RBAC permissions configured"
-
-# Verify RBAC permissions
-log_info "Verifying RBAC permissions..."
-kubectl auth can-i list mongodb --as=system:serviceaccount:mongodb-enterprise-operator:mongodb-enterprise-operator --all-namespaces
-kubectl auth can-i list namespaces --as=system:serviceaccount:mongodb-enterprise-operator:mongodb-enterprise-operator
-kubectl auth can-i list statefulsets --as=system:serviceaccount:mongodb-enterprise-operator:mongodb-enterprise-operator --all-namespaces
-
-log_info "Restarting operator to pick up new RBAC permissions..."
-kubectl rollout restart deployment/mongodb-enterprise-operator -n mongodb-enterprise-operator
-kubectl rollout status deployment/mongodb-enterprise-operator -n mongodb-enterprise-operator --timeout=120s
-
-log_success "Operator restarted with cluster-wide permissions"
+log_success "Unified operator is running and ready"
+log_info "The unified operator automatically watches: mongodb, opsmanagers, mongodbusers, mongodbcommunity, and mongodbsearch resources"
 
 # Step 2: Get Ops Manager Credentials
 log_step "Step 2: Getting Ops Manager Credentials"
