@@ -79,7 +79,7 @@ if ! kubectl get namespace ${NAMESPACE} &> /dev/null; then
 fi
 
 # Check if MongoDB is deployed
-if ! kubectl get svc -n ${NAMESPACE} | grep -q mongodb-rs-svc; then
+if ! kubectl get svc -n ${NAMESPACE} | grep -q "mdb-rs-svc\|mongodb-rs-svc"; then
     log_error "MongoDB service not found. Please run Phase 2 first."
     exit 1
 fi
@@ -149,13 +149,20 @@ fi
 # Step 5: Get MongoDB Connection Details
 log_step "Step 5: Retrieving MongoDB Connection Details"
 
-# Get MongoDB service details
-MONGODB_SERVICE="mongodb-rs-svc.${NAMESPACE}.svc.cluster.local"
+# Get MongoDB service details - check which service name is used
+if kubectl get svc -n ${NAMESPACE} mdb-rs-svc &> /dev/null; then
+    MONGODB_SERVICE="mdb-rs-svc.${NAMESPACE}.svc.cluster.local"
+    REPLICA_SET_NAME="mdb-rs"
+else
+    MONGODB_SERVICE="mongodb-rs-svc.${NAMESPACE}.svc.cluster.local"
+    REPLICA_SET_NAME="mongodb-rs"
+fi
+
 MONGODB_PORT="27017"
 MONGODB_USER="appuser"
 MONGODB_PASSWORD="SecureUser456!"
 MONGODB_DB="searchdb"
-MONGODB_URL="mongodb://${MONGODB_USER}:${MONGODB_PASSWORD}@${MONGODB_SERVICE}:${MONGODB_PORT}/${MONGODB_DB}?replicaSet=mongodb-rs&authSource=admin"
+MONGODB_URL="mongodb://${MONGODB_USER}:${MONGODB_PASSWORD}@${MONGODB_SERVICE}:${MONGODB_PORT}/${MONGODB_DB}?replicaSet=${REPLICA_SET_NAME}&authSource=admin"
 
 log_info "MongoDB connection: ${MONGODB_SERVICE}:${MONGODB_PORT}"
 log_success "MongoDB connection details retrieved"
