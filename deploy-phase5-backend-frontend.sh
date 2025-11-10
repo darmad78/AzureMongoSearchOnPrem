@@ -35,6 +35,7 @@ FRONTEND_PORT=5173
 
 # Get VM IP for displaying access information
 VM_IP=$(hostname -I | awk '{print $1}' 2>/dev/null || echo "localhost")
+EXTERNAL_IP=$(curl -s ifconfig.me 2>/dev/null || echo "${VM_IP}")
 
 log_info "Configuration:"
 echo "  📦 Namespace: ${NAMESPACE}"
@@ -484,7 +485,11 @@ log_step "Step 12: Access Information & Next Steps"
 
 echo -e "${GREEN}🎉 Backend & Frontend Deployment Summary:${NC}"
 echo ""
-echo "🔗 Access URLs:"
+echo "🔗 Access URLs (via Port Forwarding):"
+echo "   Frontend (UI):  http://${EXTERNAL_IP}:30173"
+echo "   Backend (API):  http://${EXTERNAL_IP}:30888"
+echo ""
+echo "🔗 Internal Access URLs:"
 echo "   Frontend (UI):  ${FRONTEND_URL}"
 echo "   Backend (API):  ${BACKEND_URL}"
 echo ""
@@ -564,6 +569,9 @@ echo ""
 echo -e "${GREEN}🚀 Your MongoDB Search application is now fully deployed!${NC}"
 echo ""
 echo "Open the frontend in your browser:"
+echo "   http://${EXTERNAL_IP}:30173"
+echo ""
+echo "Or use internal access:"
 echo "   ${FRONTEND_URL}"
 echo ""
 
@@ -571,6 +579,51 @@ if command -v minikube &> /dev/null && kubectl config current-context | grep -q 
   log_info "For minikube users, you can also use:"
   echo "   minikube service search-frontend-svc -n ${NAMESPACE}"
 fi
+
+# Step 13: Setup Persistent Port Forwarding
+log_step "Step 13: Setting up Persistent Port Forwarding"
+
+log_info "Creating systemd service for automatic port forwarding..."
+CURRENT_USER=$(whoami)
+
+sudo tee /etc/systemd/system/k8s-port-forward.service > /dev/null <<EOF
+[Unit]
+Description=Kubernetes Port Forward for Search Frontend and Backend
+After=network.target docker.service
+Requires=docker.service
+
+[Service]
+Type=simple
+User=${CURRENT_USER}
+WorkingDirectory=/home/${CURRENT_USER}
+Environment="KUBECONFIG=/home/${CURRENT_USER}/.kube/config"
+ExecStartPre=/bin/sleep 30
+ExecStart=/bin/bash -c 'kubectl port-forward -n mongodb svc/search-frontend-svc 30173:5173 --address 0.0.0.0 & kubectl port-forward -n mongodb svc/search-backend-svc 30888:8888 --address 0.0.0.0 & wait'
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+log_info "Reloading systemd daemon..."
+sudo systemctl daemon-reload
+
+log_info "Enabling service to start on boot..."
+sudo systemctl enable k8s-port-forward.service
+
+log_info "Starting port forwarding service..."
+sudo systemctl start k8s-port-forward.service
+
+sleep 3
+
+log_success "Port forwarding service installed and started!"
+echo ""
+echo "📋 Port Forwarding Service Commands:"
+echo "   Check status:  sudo systemctl status k8s-port-forward.service"
+echo "   View logs:     sudo journalctl -u k8s-port-forward.service -f"
+echo "   Restart:       sudo systemctl restart k8s-port-forward.service"
+echo ""
 
 log_success "Phase 5 deployment complete! 🎉"
 
