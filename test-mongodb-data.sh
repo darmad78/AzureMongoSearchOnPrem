@@ -178,6 +178,65 @@ else
     log_warning "Skipping text search (no documents)"
 fi
 
+# Step 6.5: Test MongoDB Search ($search stage)
+log_step "Step 6.5: Testing MongoDB Search (\$search aggregation)"
+
+if [ "${DOC_COUNT}" != "0" ]; then
+    log_info "Testing \$search aggregation stage (MongoDB Enterprise Search)..."
+    SEARCH_STAGE_RESULT=$(kubectl exec ${POD_NAME} -n ${NAMESPACE} -- ${MONGOSH_PATH} \
+        --eval "use ${DB_NAME}; db.${COLLECTION_NAME}.aggregate([{\$search: {index: 'default', text: {query: 'mongodb', path: ['title', 'body']}}}]).toArray()" \
+        -u ${USERNAME} -p ${PASSWORD} --authenticationDatabase admin \
+        --quiet 2>&1 | grep -v "switched to db" | grep -v "Defaulted container")
+    
+    if echo "${SEARCH_STAGE_RESULT}" | grep -q "_id"; then
+        log_success "MongoDB Search (\$search) is working!"
+        echo "Sample \$search results:"
+        echo "${SEARCH_STAGE_RESULT}" | head -20
+    elif echo "${SEARCH_STAGE_RESULT}" | grep -qE "SearchNotEnabled|31082"; then
+        log_warning "MongoDB Search (\$search) not enabled"
+        log_info "This requires MongoDB Enterprise with mongot (search nodes) deployed"
+        log_info "Run deploy-phase3-mongodb-search.sh to enable this feature"
+    else
+        log_warning "\$search test failed or no results found"
+        log_info "Error: ${SEARCH_STAGE_RESULT}" | head -5
+    fi
+else
+    log_warning "Skipping \$search test (no documents)"
+fi
+echo ""
+
+# Step 6.6: Test Vector Search ($vectorSearch stage)
+log_step "Step 6.6: Testing Vector Search (\$vectorSearch aggregation)"
+
+if [ "${DOC_COUNT}" != "0" ]; then
+    log_info "Testing \$vectorSearch aggregation stage..."
+    log_info "Creating sample query vector (384 dimensions, all zeros for testing)..."
+    
+    # Create a simple test vector (384 dimensions of zeros)
+    VECTOR_SEARCH_RESULT=$(kubectl exec ${POD_NAME} -n ${NAMESPACE} -- ${MONGOSH_PATH} \
+        --eval "use ${DB_NAME}; db.${COLLECTION_NAME}.aggregate([{\$vectorSearch: {index: 'vector_index', path: 'embedding', queryVector: Array(384).fill(0), numCandidates: 10, limit: 3}}]).toArray()" \
+        -u ${USERNAME} -p ${PASSWORD} --authenticationDatabase admin \
+        --quiet 2>&1 | grep -v "switched to db" | grep -v "Defaulted container")
+    
+    if echo "${VECTOR_SEARCH_RESULT}" | grep -q "_id"; then
+        log_success "Vector Search (\$vectorSearch) is working!"
+        echo "Sample \$vectorSearch results:"
+        echo "${VECTOR_SEARCH_RESULT}" | head -20
+    elif echo "${VECTOR_SEARCH_RESULT}" | grep -qE "SearchNotEnabled|31082|IndexNotFound"; then
+        log_warning "Vector Search (\$vectorSearch) not available"
+        log_info "This requires:"
+        log_info "  1. MongoDB Enterprise with mongot (Phase 3)"
+        log_info "  2. Vector search index created on 'embedding' field"
+        log_info "  3. Documents with embedding vectors"
+    else
+        log_warning "\$vectorSearch test failed or no results"
+        log_info "This is normal if vector index doesn't exist yet"
+    fi
+else
+    log_warning "Skipping \$vectorSearch test (no documents)"
+fi
+echo ""
+
 # Step 7: Check for Embeddings
 log_step "Step 7: Checking for Embeddings"
 
