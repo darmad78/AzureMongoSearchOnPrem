@@ -99,7 +99,7 @@ log_info "Counting documents in ${DB_NAME}.${COLLECTION_NAME}..."
 DOC_COUNT=$(kubectl exec ${POD_NAME} -n ${NAMESPACE} -- ${MONGOSH_PATH} \
     --eval "use ${DB_NAME}; db.${COLLECTION_NAME}.countDocuments({})" \
     -u ${USERNAME} -p ${PASSWORD} --authenticationDatabase admin \
-    --quiet 2>&1 | tail -1)
+    --quiet 2>&1 | grep -v "switched to db" | grep -v "Defaulted container" | tail -1 | tr -d ' ')
 
 if [ -z "${DOC_COUNT}" ] || [ "${DOC_COUNT}" = "0" ]; then
     log_warning "No documents found in collection"
@@ -115,12 +115,12 @@ fi
 # Step 4: Show Sample Documents
 log_step "Step 4: Showing Sample Documents"
 
-if [ "${DOC_COUNT}" != "0" ]; then
+if [ "${DOC_COUNT}" != "0" ] && [ -n "${DOC_COUNT}" ]; then
     log_info "Fetching first 3 documents..."
     kubectl exec ${POD_NAME} -n ${NAMESPACE} -- ${MONGOSH_PATH} \
         --eval "use ${DB_NAME}; db.${COLLECTION_NAME}.find().limit(3).forEach(doc => { print('---'); printjson(doc); })" \
         -u ${USERNAME} -p ${PASSWORD} --authenticationDatabase admin \
-        --quiet 2>&1 | tail -n +2
+        --quiet 2>&1 | grep -v "switched to db" | grep -v "Defaulted container" | tail -n +2
     
     echo ""
 else
@@ -134,9 +134,13 @@ log_info "Listing indexes on ${COLLECTION_NAME}..."
 INDEXES=$(kubectl exec ${POD_NAME} -n ${NAMESPACE} -- ${MONGOSH_PATH} \
     --eval "use ${DB_NAME}; db.${COLLECTION_NAME}.getIndexes()" \
     -u ${USERNAME} -p ${PASSWORD} --authenticationDatabase admin \
-    --quiet 2>&1)
+    --quiet 2>&1 | grep -v "switched to db" | grep -v "Defaulted container")
 
-echo "${INDEXES}"
+if [ -n "${INDEXES}" ]; then
+    echo "${INDEXES}"
+else
+    echo "   (No indexes or empty collection)"
+fi
 echo ""
 
 # Check for specific index types
@@ -182,7 +186,7 @@ if [ "${DOC_COUNT}" != "0" ]; then
     EMBED_COUNT=$(kubectl exec ${POD_NAME} -n ${NAMESPACE} -- ${MONGOSH_PATH} \
         --eval "use ${DB_NAME}; db.${COLLECTION_NAME}.countDocuments({embedding: {\$exists: true}})" \
         -u ${USERNAME} -p ${PASSWORD} --authenticationDatabase admin \
-        --quiet 2>&1 | tail -1)
+        --quiet 2>&1 | grep -v "switched to db" | grep -v "Defaulted container" | tail -1 | tr -d ' ')
     
     if [ "${EMBED_COUNT}" != "0" ]; then
         log_success "${EMBED_COUNT} document(s) have embeddings (ready for vector search)"
