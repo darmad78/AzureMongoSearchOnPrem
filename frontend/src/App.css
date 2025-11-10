@@ -4,7 +4,7 @@
 
 .App {
   text-align: center;
-  max-width: 1200px;
+  max-width: 1800px;
   margin: 0 auto;
   padding: 20px;
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
@@ -708,6 +708,141 @@ body {
   
   .chat-send-button {
     width: 100%;
+  }
+}
+
+/* App Container with Sidebar */
+.app-container {
+  display: flex;
+  gap: 20px;
+  align-items: flex-start;
+}
+
+.main-content {
+  flex: 1;
+  min-width: 0;
+}
+
+.query-sidebar {
+  width: 400px;
+  background: linear-gradient(135deg, #ffffff 0%, #f8f9fa 100%);
+  border-radius: 12px;
+  padding: 24px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
+  position: sticky;
+  top: 20px;
+  max-height: calc(100vh - 40px);
+  overflow-y: auto;
+  border: 2px solid #667eea;
+}
+
+.query-sidebar h3 {
+  margin: 0 0 20px 0;
+  color: #2c3e50;
+  font-size: 1.4em;
+  border-bottom: 3px solid #667eea;
+  padding-bottom: 10px;
+}
+
+.query-details {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.detail-section {
+  background: white;
+  padding: 16px;
+  border-radius: 8px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+  border-left: 4px solid #764ba2;
+}
+
+.detail-section h4 {
+  margin: 0 0 12px 0;
+  color: #667eea;
+  font-size: 1.1em;
+}
+
+.detail-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 0;
+  border-bottom: 1px solid #f0f0f0;
+}
+
+.detail-item:last-child {
+  border-bottom: none;
+}
+
+.detail-label {
+  font-weight: 600;
+  color: #555;
+  font-size: 0.9em;
+}
+
+.detail-value {
+  color: #2c3e50;
+  font-weight: 500;
+  font-size: 0.95em;
+}
+
+.detail-value.badge {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+  padding: 4px 12px;
+  border-radius: 12px;
+  font-size: 0.85em;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.code-block {
+  background: #282c34;
+  color: #61dafb;
+  padding: 16px;
+  border-radius: 8px;
+  overflow-x: auto;
+  font-family: 'Monaco', 'Menlo', 'Courier New', monospace;
+  font-size: 12px;
+  line-height: 1.5;
+  margin: 0;
+  max-height: 400px;
+  overflow-y: auto;
+}
+
+.timestamp {
+  color: #888;
+  font-size: 0.85em;
+  font-style: italic;
+}
+
+.no-query-message {
+  text-align: center;
+  padding: 40px 20px;
+  color: #888;
+}
+
+.no-query-message p {
+  font-size: 1em;
+  color: #999;
+}
+
+/* Responsive Sidebar */
+@media (max-width: 1200px) {
+  .app-container {
+    flex-direction: column;
+  }
+  
+  .query-sidebar {
+    width: 100%;
+    position: static;
+    max-height: none;
+  }
+  
+  .App {
+    max-width: 100%;
   }
 }
 

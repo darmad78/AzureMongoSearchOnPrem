@@ -197,6 +197,15 @@ if kubectl get mongodbuser ${MONGODB_USER} -n ${NAMESPACE} &> /dev/null; then
     fi
 fi
 
+# Create text index for search functionality
+log_info "Creating text index on documents collection for search..."
+kubectl run mongo-index-temp --image=mongodb/mongodb-enterprise-server:latest --restart=Never -n ${NAMESPACE} \
+    --command -- mongosh "${MONGODB_URL}" --eval 'db.documents.createIndex({ title: "text", body: "text", tags: "text" })' \
+    > /dev/null 2>&1 || log_warning "Could not create text index, it may already exist"
+sleep 5
+kubectl delete pod mongo-index-temp -n ${NAMESPACE} > /dev/null 2>&1 || true
+log_success "MongoDB database configuration complete"
+
 # Step 6: Get Ollama Connection Details
 log_step "Step 6: Retrieving Ollama Connection Details"
 

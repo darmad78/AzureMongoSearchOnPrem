@@ -12,6 +12,7 @@ function App() {
   const [isRecording, setIsRecording] = useState(false);
   const [isTranscribing, setIsTranscribing] = useState(false);
   const [useSemanticSearch, setUseSemanticSearch] = useState(false);
+  const [queryDetails, setQueryDetails] = useState(null);
   const [audioFile, setAudioFile] = useState(null);
   const [audioTitle, setAudioTitle] = useState('');
   const [audioTags, setAudioTags] = useState('');
@@ -120,6 +121,16 @@ function App() {
       const response = await fetch(`${API_URL}${endpoint}?q=${encodeURIComponent(query)}`);
       const data = await response.json();
       setSearchResults(data.results);
+      
+      // Store query details for display
+      setQueryDetails({
+        query: data.query,
+        mongodb_query: data.mongodb_query,
+        execution_time_ms: data.execution_time_ms,
+        search_type: data.search_type,
+        total: data.total,
+        timestamp: new Date().toISOString()
+      });
     } catch (error) {
       console.error('Error searching documents:', error);
     } finally {
@@ -290,7 +301,8 @@ function App() {
         <h1>Document Search App</h1>
       </header>
 
-      <main className="main-content">
+      <div className="app-container">
+        <main className="main-content">
         {/* Audio Upload Section - Always visible at top */}
         <section className="form-section audio-upload-section">
           <h2>🎵 Upload Audio File</h2>
@@ -604,6 +616,53 @@ function App() {
           )}
         </section>
       </main>
+
+      {/* Query Details Sidebar */}
+      <aside className="query-sidebar">
+        <h3>🔍 MongoDB Query Details</h3>
+        {queryDetails ? (
+          <div className="query-details">
+            <div className="detail-section">
+              <h4>Search Info</h4>
+              <div className="detail-item">
+                <span className="detail-label">Query:</span>
+                <span className="detail-value">"{queryDetails.query}"</span>
+              </div>
+              <div className="detail-item">
+                <span className="detail-label">Type:</span>
+                <span className="detail-value badge">{queryDetails.search_type}</span>
+              </div>
+              <div className="detail-item">
+                <span className="detail-label">Execution Time:</span>
+                <span className="detail-value">{queryDetails.execution_time_ms}ms</span>
+              </div>
+              <div className="detail-item">
+                <span className="detail-label">Results:</span>
+                <span className="detail-value">{queryDetails.total} documents</span>
+              </div>
+            </div>
+
+            <div className="detail-section">
+              <h4>MongoDB Query</h4>
+              <pre className="code-block">
+                {JSON.stringify(queryDetails.mongodb_query, null, 2)}
+              </pre>
+            </div>
+
+            <div className="detail-section">
+              <h4>Timestamp</h4>
+              <div className="detail-value timestamp">
+                {new Date(queryDetails.timestamp).toLocaleString()}
+              </div>
+            </div>
+          </div>
+        ) : (
+          <div className="no-query-message">
+            <p>🔎 Execute a search to see MongoDB query details</p>
+          </div>
+        )}
+      </aside>
+      </div>
     </div>
   );
 }

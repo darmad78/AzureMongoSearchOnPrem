@@ -72,6 +72,9 @@ class SearchResponse(BaseModel):
     query: str
     results: List[DocumentResponse]
     total: int
+    mongodb_query: Optional[dict] = None
+    execution_time_ms: Optional[float] = None
+    search_type: Optional[str] = None
 
 class ChatRequest(BaseModel):
     question: str
@@ -250,12 +253,37 @@ async def semantic_search(q: str, limit: int = 10):
     if not q.strip():
         raise HTTPException(status_code=400, detail="Query parameter 'q' is required")
     
+    import time
+    start_time = time.time()
+    
     # Generate embedding for query
     query_embedding = embedding_model.encode(q).tolist()
     
     try:
         # Use MongoDB's native $vectorSearch aggregation (Enterprise feature)
         pipeline = [
+            {
+                "$vectorSearch": {
+                    "index": "vector_index",
+                    "path": "embedding",
+                    "queryVector": "[VECTOR_EMBEDDING]",  # Placeholder for display
+                    "numCandidates": limit * 10,
+                    "limit": limit
+                }
+            },
+            {
+                "$project": {
+                    "_id": 1,
+                    "title": 1,
+                    "body": 1,
+                    "tags": 1,
+                    "score": { "$meta": "vectorSearchScore" }
+                }
+            }
+        ]
+        
+        # Execute MongoDB vector search (use actual embedding)
+        actual_pipeline = [
             {
                 "$vectorSearch": {
                     "index": "vector_index",
@@ -276,8 +304,7 @@ async def semantic_search(q: str, limit: int = 10):
             }
         ]
         
-        # Execute MongoDB vector search
-        results = list(documents.aggregate(pipeline))
+        results = list(documents.aggregate(actual_pipeline))
         
         top_results = []
         for doc in results:
@@ -288,7 +315,16 @@ async def semantic_search(q: str, limit: int = 10):
                 tags=doc["tags"]
             ))
         
-        return SearchResponse(query=q, results=top_results, total=len(top_results))
+        execution_time = (time.time() - start_time) * 1000
+        
+        return SearchResponse(
+            query=q, 
+            results=top_results, 
+            total=len(top_results),
+            mongodb_query={"aggregate": pipeline},
+            execution_time_ms=round(execution_time, 2),
+            search_type="vector"
+        )
         
     except Exception as e:
         # Fallback to manual vector search if $vectorSearch is not available
@@ -305,8 +341,21 @@ async def semantic_search(q: str, limit: int = 10):
         # Get all documents with embeddings
         all_docs = list(documents.find({"embedding": {"$exists": True}}))
         
+        fallback_query = {
+            "find": {"embedding": {"$exists": True}},
+            "note": "Using Python cosine similarity (fallback)"
+        }
+        
         if not all_docs:
-            return SearchResponse(query=q, results=[], total=0)
+            execution_time = (time.time() - start_time) * 1000
+            return SearchResponse(
+                query=q, 
+                results=[], 
+                total=0,
+                mongodb_query=fallback_query,
+                execution_time_ms=round(execution_time, 2),
+                search_type="vector_fallback"
+            )
         
         # Calculate cosine similarity manually as fallback
         results_with_scores = []
@@ -330,7 +379,16 @@ async def semantic_search(q: str, limit: int = 10):
                 tags=doc["tags"]
             ))
         
-        return SearchResponse(query=q, results=top_results, total=len(top_results))
+        execution_time = (time.time() - start_time) * 1000
+        
+        return SearchResponse(
+            query=q, 
+            results=top_results, 
+            total=len(top_results),
+            mongodb_query=fallback_query,
+            execution_time_ms=round(execution_time, 2),
+            search_type="vector_fallback"
+        )
 
 @app.get("/documents", response_model=List[DocumentResponse])
 async def get_documents():
@@ -342,7 +400,16 @@ async def search_documents(q: str):
     if not q.strip():
         raise HTTPException(status_code=400, detail="Query parameter 'q' is required")
     
-    # MongoDB text search
+    import time
+    start_time = time.time()
+    
+    # MongoDB text search query
+    mongodb_query = {
+        "find": {"$text": {"$search": q}},
+        "projection": {"score": {"$meta": "textScore"}},
+        "sort": [("score", {"$meta": "textScore"})]
+    }
+    
     cursor = documents.find(
         {"$text": {"$search": q}},
         {"score": {"$meta": "textScore"}}
@@ -357,7 +424,16 @@ async def search_documents(q: str):
             tags=doc["tags"]
         ))
     
-    return SearchResponse(query=q, results=results, total=len(results))
+    execution_time = (time.time() - start_time) * 1000  # Convert to ms
+    
+    return SearchResponse(
+        query=q, 
+        results=results, 
+        total=len(results),
+        mongodb_query=mongodb_query,
+        execution_time_ms=round(execution_time, 2),
+        search_type="text"
+    )
 
 # Helper function to call LLM
 def call_llm(prompt: str, context: str) -> str:
