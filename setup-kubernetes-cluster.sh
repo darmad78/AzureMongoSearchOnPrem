@@ -136,3 +136,7 @@ echo "   Nodes: $(kubectl get nodes --no-headers | wc -l)"
 
 
 
+
+
+
+

@@ -1,0 +1,5 @@
+## 📝 Workflow and Planning Rules
+
+- **Always** provide a short, high-level plan (using a bulleted list) before implementing any new feature or substantial code change.
+- **NEVER** proceed with implementation until the plan has been approved.
+- **LIMITS** all multi-step responses to a maximum of **two implementation steps** at a time. Ask for confirmation before proceeding to the next pair of steps.SPECIALLY FOR TESTING. 
