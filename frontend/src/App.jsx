@@ -1,7 +1,25 @@
 import React, { useState, useEffect, useRef } from 'react';
 import './App.css';
 
-const API_URL = import.meta.env.VITE_API_URL || window.location.origin.replace(':5173', ':8000') || 'http://localhost:8000';
+// Determine API URL: use env var, or construct from current location
+const getApiUrl = () => {
+  if (import.meta.env.VITE_API_URL) {
+    return import.meta.env.VITE_API_URL;
+  }
+  // If accessed via port-forward on 30173, backend is on 30888
+  if (window.location.port === '30173') {
+    return window.location.origin.replace(':30173', ':30888');
+  }
+  // Default fallbacks
+  if (window.location.port === '5173') {
+    return window.location.origin.replace(':5173', ':8000');
+  }
+  return 'http://localhost:8000';
+};
+const API_URL = getApiUrl();
+console.log('Frontend API_URL:', API_URL);
+console.log('VITE_API_URL env:', import.meta.env.VITE_API_URL);
+console.log('Window location:', window.location.href);
 
 function App() {
   const [documents, setDocuments] = useState([]);
@@ -135,8 +153,19 @@ function App() {
   // Fetch all documents
   const fetchDocuments = async () => {
     try {
-      const response = await fetch(`${API_URL}/documents`);
+      const url = `${API_URL}/documents`;
+      console.log('Fetching documents from:', url);
+      const response = await fetch(url);
+      
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error(`Failed to fetch documents: ${response.status} ${response.statusText}`, errorText);
+        alert(`Failed to load documents: ${response.status} ${response.statusText}`);
+        return;
+      }
+      
       const data = await response.json();
+      console.log(`Successfully fetched ${data.length} documents`);
       setDocuments(data);
       // Capture MongoDB operation from first document (if available)
       if (data.length > 0 && data[0].mongodb_operation) {
@@ -144,6 +173,7 @@ function App() {
       }
     } catch (error) {
       console.error('Error fetching documents:', error);
+      alert(`Error fetching documents: ${error.message}. Check console for details.`);
     }
   };
 
