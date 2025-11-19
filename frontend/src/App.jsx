@@ -37,6 +37,7 @@ function App() {
   const [audioLanguage, setAudioLanguage] = useState('');
   const [isUploadingAudio, setIsUploadingAudio] = useState(false);
   const [uploadStatus, setUploadStatus] = useState('');
+  const [uploadSteps, setUploadSteps] = useState([]);
   const [chatQuestion, setChatQuestion] = useState('');
   const [chatHistory, setChatHistory] = useState([]);
   const [isAsking, setIsAsking] = useState(false);
@@ -77,7 +78,174 @@ function App() {
     }));
   };
 
-  // MongoDB Operation Details Component
+  // Professional MongoDB Query/Result Display Component
+  const MongoDBQueryResult = ({ operation, collapsible = true }) => {
+    const [isExpanded, setIsExpanded] = useState(!collapsible);
+    
+    if (!operation) return null;
+    
+    return (
+      <div style={{
+        marginTop: '20px',
+        border: '1px solid #e0e0e0',
+        borderRadius: '8px',
+        overflow: 'hidden',
+        boxShadow: '0 2px 4px rgba(0,0,0,0.1)'
+      }}>
+        {collapsible && (
+          <div 
+            onClick={() => setIsExpanded(!isExpanded)}
+            style={{
+              padding: '12px 16px',
+              backgroundColor: '#f5f5f5',
+              borderBottom: '1px solid #e0e0e0',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              userSelect: 'none'
+            }}
+          >
+            <strong style={{ color: '#333', fontSize: '0.95em' }}>
+              🗄️ MongoDB Query Details
+            </strong>
+            <span style={{ fontSize: '0.9em', color: '#666' }}>
+              {isExpanded ? '▼' : '▶'}
+            </span>
+          </div>
+        )}
+        {(!collapsible || isExpanded) && (
+          <div style={{ padding: '16px', backgroundColor: '#fff' }}>
+            {/* Query Block */}
+            {operation.query && (
+              <div style={{ marginBottom: '20px' }}>
+                <div style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  marginBottom: '10px',
+                  paddingBottom: '8px',
+                  borderBottom: '2px solid #007bff'
+                }}>
+                  <span style={{ fontSize: '1.2em', marginRight: '8px' }}>📤</span>
+                  <strong style={{ fontSize: '1em', color: '#007bff' }}>
+                    Query Request
+                  </strong>
+                </div>
+                <div style={{
+                  backgroundColor: '#f0f7ff',
+                  border: '1px solid #b3d9ff',
+                  borderRadius: '6px',
+                  padding: '12px',
+                  overflow: 'auto',
+                  maxHeight: '400px'
+                }}>
+                  <pre style={{
+                    margin: 0,
+                    fontSize: '0.85em',
+                    fontFamily: 'Monaco, "Courier New", monospace',
+                    color: '#004085',
+                    whiteSpace: 'pre-wrap',
+                    wordBreak: 'break-word'
+                  }}>
+                    {JSON.stringify(operation.query, null, 2)}
+                  </pre>
+                </div>
+              </div>
+            )}
+            
+            {/* Result Block */}
+            {operation.result && !operation.result.workflow_steps && (
+              <div style={{ marginBottom: '20px' }}>
+                <div style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  marginBottom: '10px',
+                  paddingBottom: '8px',
+                  borderBottom: '2px solid #28a745'
+                }}>
+                  <span style={{ fontSize: '1.2em', marginRight: '8px' }}>📥</span>
+                  <strong style={{ fontSize: '1em', color: '#28a745' }}>
+                    Query Response
+                  </strong>
+                </div>
+                <div style={{
+                  backgroundColor: '#f0fdf4',
+                  border: '1px solid #c3e6cb',
+                  borderRadius: '6px',
+                  padding: '12px',
+                  overflow: 'auto',
+                  maxHeight: '400px'
+                }}>
+                  <pre style={{
+                    margin: 0,
+                    fontSize: '0.85em',
+                    fontFamily: 'Monaco, "Courier New", monospace',
+                    color: '#155724',
+                    whiteSpace: 'pre-wrap',
+                    wordBreak: 'break-word'
+                  }}>
+                    {JSON.stringify(operation.result, null, 2)}
+                  </pre>
+                </div>
+                {operation.result.retrieved_documents !== undefined && (
+                  <div style={{
+                    marginTop: '12px',
+                    padding: '10px',
+                    backgroundColor: '#fff3cd',
+                    border: '1px solid #ffc107',
+                    borderRadius: '6px',
+                    fontSize: '0.9em'
+                  }}>
+                    <strong>📊 Summary:</strong> Retrieved <strong>{operation.result.retrieved_documents}</strong> of <strong>{operation.result.total_documents || 'N/A'}</strong> documents
+                    {operation.result.similarity_scores && operation.result.similarity_scores.length > 0 && (
+                      <div style={{ marginTop: '6px' }}>
+                        Similarity: {operation.result.similarity_scores.map(s => s.toFixed(4)).join(', ')}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
+            
+            {/* Metadata */}
+            <div style={{
+              display: 'flex',
+              gap: '20px',
+              paddingTop: '12px',
+              borderTop: '1px solid #e0e0e0',
+              fontSize: '0.85em',
+              color: '#666'
+            }}>
+              {operation.operation && (
+                <div>
+                  <strong>Operation:</strong> <span style={{
+                    backgroundColor: '#007bff',
+                    color: 'white',
+                    padding: '2px 8px',
+                    borderRadius: '4px',
+                    fontSize: '0.85em',
+                    marginLeft: '5px'
+                  }}>{operation.operation}</span>
+                </div>
+              )}
+              {operation.execution_time_ms && (
+                <div>
+                  <strong>⏱️ Time:</strong> {operation.execution_time_ms}ms
+                </div>
+              )}
+              {operation.documents_affected !== null && operation.documents_affected !== undefined && (
+                <div>
+                  <strong>📄 Documents:</strong> {operation.documents_affected}
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  };
+
+  // MongoDB Operation Details Component (for workflow steps)
   const MongoDBOperationDetails = ({ operation, title }) => {
     if (!operation) return null;
     
@@ -113,15 +281,20 @@ function App() {
           </div>
         )}
         {operation.query && (
-          <div style={{ marginBottom: '10px' }}>
-            <strong>Query:</strong>
+          <div style={{ marginBottom: '15px' }}>
+            <strong style={{ fontSize: '1em', color: '#007bff', display: 'block', marginBottom: '8px' }}>
+              📤 MongoDB Query Sent:
+            </strong>
             <pre style={{ 
-              backgroundColor: '#fff', 
-              padding: '10px', 
-              borderRadius: '4px',
+              backgroundColor: '#e7f3ff', 
+              padding: '12px', 
+              borderRadius: '6px',
               overflow: 'auto',
               fontSize: '0.85em',
-              marginTop: '5px'
+              marginTop: '5px',
+              border: '1px solid #b3d9ff',
+              maxHeight: '300px',
+              fontFamily: 'monospace'
             }}>
               {JSON.stringify(operation.query, null, 2)}
             </pre>
@@ -209,18 +382,43 @@ function App() {
           </div>
         )}
         {operation.result && !operation.result.workflow_steps && (
-          <div style={{ marginBottom: '10px' }}>
-            <strong>Result:</strong>
+          <div style={{ marginBottom: '15px' }}>
+            <strong style={{ fontSize: '1em', color: '#28a745', display: 'block', marginBottom: '8px' }}>
+              📥 MongoDB Response:
+            </strong>
             <pre style={{ 
-              backgroundColor: '#fff', 
-              padding: '10px', 
-              borderRadius: '4px',
+              backgroundColor: '#d4edda', 
+              padding: '12px', 
+              borderRadius: '6px',
               overflow: 'auto',
               fontSize: '0.85em',
-              marginTop: '5px'
+              marginTop: '5px',
+              border: '1px solid #c3e6cb',
+              maxHeight: '300px',
+              fontFamily: 'monospace'
             }}>
               {JSON.stringify(operation.result, null, 2)}
             </pre>
+            {operation.result.retrieved_documents !== undefined && (
+              <div style={{ 
+                marginTop: '10px', 
+                padding: '10px',
+                backgroundColor: '#fff3cd',
+                borderRadius: '6px',
+                fontSize: '0.9em',
+                border: '1px solid #ffc107'
+              }}>
+                <strong>📊 Query Summary:</strong>
+                <div style={{ marginTop: '5px' }}>
+                  • Retrieved <strong>{operation.result.retrieved_documents}</strong> document(s) from <strong>{operation.result.total_documents || 'N/A'}</strong> total
+                  {operation.result.similarity_scores && operation.result.similarity_scores.length > 0 && (
+                    <div style={{ marginTop: '5px' }}>
+                      • Similarity scores: <strong>{operation.result.similarity_scores.map(s => s.toFixed(4)).join(', ')}</strong>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
           </div>
         )}
         {operation.index_used && (
@@ -400,6 +598,7 @@ function App() {
       if (file.type.startsWith('audio/')) {
         setAudioFile(file);
         setUploadStatus('');
+        setUploadSteps([]);
       } else {
         alert('Please select a valid audio file');
         e.target.value = '';
@@ -416,7 +615,8 @@ function App() {
     }
 
     setIsUploadingAudio(true);
-    setUploadStatus('Uploading and transcribing audio...');
+    setUploadStatus('Starting upload...');
+    setUploadSteps([]);
 
     try {
       const formData = new FormData();
@@ -425,6 +625,15 @@ function App() {
       if (audioTags) formData.append('tags', audioTags);
       if (audioLanguage) formData.append('language', audioLanguage);
 
+      // Show initial step
+      setUploadSteps([{
+        step: 1,
+        name: "Upload Audio File",
+        status: "in_progress",
+        details: { filename: audioFile.name }
+      }]);
+      setUploadStatus('📤 Uploading audio file...');
+
       const response = await fetch(`${API_URL}/documents/from-audio`, {
         method: 'POST',
         body: formData,
@@ -432,6 +641,14 @@ function App() {
 
       if (response.ok) {
         const result = await response.json();
+        
+        // Extract workflow steps from MongoDB operation
+        let steps = [];
+        if (result.mongodb_operation && result.mongodb_operation.result && result.mongodb_operation.result.workflow_steps) {
+          steps = result.mongodb_operation.result.workflow_steps;
+        }
+        
+        setUploadSteps(steps);
         setUploadStatus(`✅ Successfully created document: "${result.title}"`);
         
         // Capture MongoDB operation details
@@ -449,15 +666,20 @@ function App() {
         // Refresh documents list
         fetchDocuments();
         
-        // Clear status after 3 seconds
-        setTimeout(() => setUploadStatus(''), 3000);
+        // Clear status after 5 seconds (longer to see the steps)
+        setTimeout(() => {
+          setUploadStatus('');
+          setUploadSteps([]);
+        }, 5000);
       } else {
         const error = await response.json();
         setUploadStatus(`❌ Error: ${error.detail}`);
+        setUploadSteps([]);
       }
     } catch (error) {
       console.error('Error uploading audio:', error);
       setUploadStatus('❌ Upload failed. Please try again.');
+      setUploadSteps([]);
     } finally {
       setIsUploadingAudio(false);
     }
@@ -727,10 +949,115 @@ function App() {
               {uploadStatus}
             </div>
           )}
+          
+          {/* Workflow Steps Progress */}
+          {uploadSteps.length > 0 && (
+            <div style={{
+              marginTop: '20px',
+              padding: '15px',
+              backgroundColor: '#f8f9fa',
+              border: '1px solid #dee2e6',
+              borderRadius: '8px'
+            }}>
+              <h3 style={{ marginTop: 0, marginBottom: '15px', color: '#495057' }}>
+                📋 Processing Steps
+              </h3>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                {uploadSteps.map((step, index) => (
+                  <div 
+                    key={step.step || index}
+                    style={{
+                      padding: '12px',
+                      backgroundColor: step.status === 'completed' ? '#d4edda' : 
+                                       step.status === 'in_progress' ? '#fff3cd' : '#f8f9fa',
+                      border: `1px solid ${step.status === 'completed' ? '#c3e6cb' : 
+                                              step.status === 'in_progress' ? '#ffeaa7' : '#dee2e6'}`,
+                      borderRadius: '6px',
+                      display: 'flex',
+                      alignItems: 'flex-start',
+                      gap: '12px'
+                    }}
+                  >
+                    <div style={{
+                      fontSize: '20px',
+                      minWidth: '30px'
+                    }}>
+                      {step.status === 'completed' ? '✅' : 
+                       step.status === 'in_progress' ? '⏳' : '⏸️'}
+                    </div>
+                    <div style={{ flex: 1 }}>
+                      <div style={{
+                        fontWeight: 'bold',
+                        marginBottom: '5px',
+                        color: '#212529'
+                      }}>
+                        Step {step.step}: {step.name}
+                      </div>
+                      {step.details && (
+                        <div style={{ fontSize: '0.9em', color: '#6c757d' }}>
+                          {step.details.filename && (
+                            <div>📄 File: {step.details.filename}</div>
+                          )}
+                          {step.details.file_size_bytes && (
+                            <div>📦 Size: {(step.details.file_size_bytes / 1024).toFixed(2)} KB</div>
+                          )}
+                          {step.details.detected_language && (
+                            <div>🌐 Language: {step.details.detected_language}</div>
+                          )}
+                          {step.details.transcription_length && (
+                            <div>📝 Transcription: {step.details.transcription_length} characters</div>
+                          )}
+                          {step.details.transcription_preview && (
+                            <div style={{ 
+                              marginTop: '5px', 
+                              fontStyle: 'italic',
+                              color: '#495057'
+                            }}>
+                              Preview: "{step.details.transcription_preview}"
+                            </div>
+                          )}
+                          {step.details.embedding_dimensions && (
+                            <div>🧠 Embedding: {step.details.embedding_dimensions} dimensions ({step.details.model})</div>
+                          )}
+                          {step.details.inserted_id && (
+                            <div>💾 Document ID: {step.details.inserted_id}</div>
+                          )}
+                          {step.details.duration_ms && (
+                            <div style={{ 
+                              marginTop: '5px',
+                              fontWeight: 'bold',
+                              color: '#007bff'
+                            }}>
+                              ⏱️ Duration: {step.details.duration_ms}ms
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                ))}
+                {mongodbOps.uploadAudio && mongodbOps.uploadAudio.result && mongodbOps.uploadAudio.result.total_duration_ms && (
+                  <div style={{
+                    marginTop: '10px',
+                    padding: '10px',
+                    backgroundColor: '#e7f3ff',
+                    border: '1px solid #b3d9ff',
+                    borderRadius: '6px',
+                    textAlign: 'center',
+                    fontWeight: 'bold',
+                    color: '#004085'
+                  }}>
+                    ⏱️ Total Processing Time: {mongodbOps.uploadAudio.result.total_duration_ms}ms
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+          
           {mongodbOps.uploadAudio && (
-            <MongoDBOperationDetails 
-              operation={mongodbOps.uploadAudio} 
-              title="Upload Audio Document"
+            <MongoDBQueryResult 
+              operation={mongodbOps.uploadAudio}
+              collapsible={true}
             />
           )}
         </section>
@@ -787,12 +1114,10 @@ function App() {
                           <div className="message-model">Model: {message.model}</div>
                         )}
                         {message.mongodb_operation && (
-                          <div style={{ marginTop: '15px' }}>
-                            <MongoDBOperationDetails 
-                              operation={message.mongodb_operation} 
-                              title="MongoDB Query Details"
-                            />
-                          </div>
+                          <MongoDBQueryResult 
+                            operation={message.mongodb_operation}
+                            collapsible={true}
+                          />
                         )}
                       </div>
                     </div>
@@ -817,9 +1142,9 @@ function App() {
             </form>
           </div>
           {mongodbOps.chat && (
-            <MongoDBOperationDetails 
-              operation={mongodbOps.chat} 
-              title="RAG Document Retrieval"
+            <MongoDBQueryResult 
+              operation={mongodbOps.chat}
+              collapsible={true}
             />
           )}
           </div>

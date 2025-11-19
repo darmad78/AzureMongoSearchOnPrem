@@ -29,7 +29,7 @@ echo -e "${NC}"
 # Configuration
 NAMESPACE="mongodb"
 BACKEND_IMAGE="azuremongosearch-backend:latest"
-FRONTEND_IMAGE="document-search-frontend:fixed-v1"
+FRONTEND_IMAGE="document-search-frontend:fixed-v2"
 BACKEND_PORT=8888
 FRONTEND_PORT=5173
 
