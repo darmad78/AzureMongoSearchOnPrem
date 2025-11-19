@@ -3,20 +3,15 @@ import './App.css';
 
 // Determine API URL: use env var, or construct from current location
 const getApiUrl = () => {
-  // If accessed via port-forward on 30173, always use the correct external IP
-  // This overrides any build-time VITE_API_URL that might have the wrong IP
-  if (window.location.port === '30173') {
-    return 'http://136.112.200.116:30888';
-  }
-  // Use build-time env var if available (for other scenarios)
+  // Allow override via environment variable
   if (import.meta.env.VITE_API_URL) {
     return import.meta.env.VITE_API_URL;
   }
-  // Default fallbacks
-  if (window.location.port === '5173') {
-    return window.location.origin.replace(':5173', ':8000');
-  }
-  return 'http://localhost:8000';
+  
+  // Otherwise construct dynamically
+  const hostname = window.location.hostname;
+  const protocol = window.location.protocol;
+  return `${protocol}//${hostname}:30888`;
 };
 const API_URL = getApiUrl();
 console.log('Frontend API_URL:', API_URL);
