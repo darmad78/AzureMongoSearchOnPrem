@@ -56,8 +56,9 @@ function App() {
     addDocument: false,
     search: true,
     chat: false,
-    documents: false
+    documents: true  // Expanded by default to show documents
   });
+  const [isLoadingDocuments, setIsLoadingDocuments] = useState(true);
   
   const toggleSection = (section) => {
     setExpandedSections(prev => ({
@@ -152,6 +153,7 @@ function App() {
 
   // Fetch all documents
   const fetchDocuments = async () => {
+    setIsLoadingDocuments(true);
     try {
       const url = `${API_URL}/documents`;
       console.log('Fetching documents from:', url);
@@ -161,6 +163,7 @@ function App() {
         const errorText = await response.text();
         console.error(`Failed to fetch documents: ${response.status} ${response.statusText}`, errorText);
         alert(`Failed to load documents: ${response.status} ${response.statusText}`);
+        setIsLoadingDocuments(false);
         return;
       }
       
@@ -174,6 +177,8 @@ function App() {
     } catch (error) {
       console.error('Error fetching documents:', error);
       alert(`Error fetching documents: ${error.message}. Check console for details.`);
+    } finally {
+      setIsLoadingDocuments(false);
     }
   };
 
@@ -741,7 +746,11 @@ function App() {
           </h2>
           {expandedSections.documents && (
           <div className="collapsible-content">
-          {searchResults.length > 0 ? (
+          {isLoadingDocuments ? (
+            <div style={{ padding: '20px', textAlign: 'center' }}>
+              <p>⏳ Loading documents...</p>
+            </div>
+          ) : searchResults.length > 0 ? (
             <div>
               <h3>Search Results for "{searchQuery}"</h3>
               {searchResults.map((doc, index) => (
@@ -758,18 +767,24 @@ function App() {
             </div>
           ) : (
             <div>
-              <h3>All Documents</h3>
-              {documents.map((doc) => (
-                <div key={doc.id} className="document-card">
-                  <h3>{doc.title}</h3>
-                  <p>{doc.body}</p>
-                  <div className="tags">
-                    {doc.tags.map((tag, i) => (
-                      <span key={i} className="tag">{tag}</span>
-                    ))}
+              <h3>All Documents {documents.length > 0 ? `(${documents.length})` : ''}</h3>
+              {documents.length === 0 ? (
+                <p style={{ padding: '20px', textAlign: 'center', color: '#666' }}>
+                  No documents found. Add a document or upload an audio file to get started.
+                </p>
+              ) : (
+                documents.map((doc) => (
+                  <div key={doc.id} className="document-card">
+                    <h3>{doc.title}</h3>
+                    <p>{doc.body}</p>
+                    <div className="tags">
+                      {doc.tags.map((tag, i) => (
+                        <span key={i} className="tag">{tag}</span>
+                      ))}
+                    </div>
                   </div>
-                </div>
-              ))}
+                ))
+              )}
             </div>
           )}
           {mongodbOps.fetchDocuments && (
