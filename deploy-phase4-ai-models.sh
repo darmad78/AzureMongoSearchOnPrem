@@ -28,7 +28,7 @@ echo -e "${NC}"
 
 # Configuration
 NAMESPACE="mongodb"
-OLLAMA_MODEL="${OLLAMA_MODEL:-llama2}"  # Default to llama2, can be overridden
+OLLAMA_MODEL="${OLLAMA_MODEL:-phi}"  # Default to phi (smaller, works with 8Gi memory), can be overridden
 EMBEDDING_MODEL="${EMBEDDING_MODEL:-all-MiniLM-L6-v2}"  # Default embedding model
 WHISPER_MODEL="${WHISPER_MODEL:-base}"  # Default Whisper model for speech-to-text
 

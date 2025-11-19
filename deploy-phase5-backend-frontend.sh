@@ -214,7 +214,7 @@ OLLAMA_PORT="11434"
 OLLAMA_URL="http://${OLLAMA_SERVICE}:${OLLAMA_PORT}"
 
 # Get Ollama model from ConfigMap if it exists
-OLLAMA_MODEL=$(kubectl get configmap ai-models-config -n ${NAMESPACE} -o jsonpath='{.data.OLLAMA_MODEL}' 2>/dev/null || echo "llama2")
+OLLAMA_MODEL=$(kubectl get configmap ai-models-config -n ${NAMESPACE} -o jsonpath='{.data.OLLAMA_MODEL}' 2>/dev/null || echo "phi")
 
 log_info "Ollama connection: ${OLLAMA_SERVICE}:${OLLAMA_PORT}"
 log_info "Ollama model: ${OLLAMA_MODEL}"

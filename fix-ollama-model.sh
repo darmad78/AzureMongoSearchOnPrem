@@ -14,7 +14,7 @@ NC='\033[0m' # No Color
 
 # Configuration
 NAMESPACE="${NAMESPACE:-mongodb}"
-OLLAMA_MODEL="${OLLAMA_MODEL:-llama2}"
+OLLAMA_MODEL="${OLLAMA_MODEL:-phi}"
 
 echo -e "${BLUE}🔍 Checking Ollama Setup${NC}"
 echo ""

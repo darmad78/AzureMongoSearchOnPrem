@@ -34,7 +34,7 @@ embedding_model = SentenceTransformer('all-MiniLM-L6-v2')
 LLM_PROVIDER = os.getenv("LLM_PROVIDER", "ollama")  # "openai" or "ollama"
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
 OLLAMA_URL = os.getenv("OLLAMA_URL", "http://localhost:11434")
-OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "llama2")
+OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "phi")
 
 # Initialize OpenAI client if using OpenAI
 openai_client = None
