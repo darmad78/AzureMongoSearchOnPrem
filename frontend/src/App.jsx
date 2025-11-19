@@ -56,7 +56,7 @@ function App() {
   const [expandedSections, setExpandedSections] = useState({
     addDocument: false,
     search: true,
-    chat: false,
+    chat: true,  // Expanded by default for better UX
     documents: true,  // Expanded by default to show documents
     health: false
   });
@@ -1048,12 +1048,12 @@ function App() {
                         {message.model && (
                           <div className="message-model">Model: {message.model}</div>
                         )}
-                        {message.mongodb_operation && (
+                        {message.mongodb_operation ? (
                           <MongoDBOperationDetails 
                             operation={message.mongodb_operation} 
                             title="RAG Search"
                           />
-                        )}
+                        ) : null}
                       </div>
                     </div>
                   ))}
