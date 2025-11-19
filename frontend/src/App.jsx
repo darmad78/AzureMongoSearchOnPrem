@@ -85,68 +85,30 @@ function App() {
     if (!operation) return null;
     
     return (
-      <div style={{
-        marginTop: '20px',
-        border: '1px solid #e0e0e0',
-        borderRadius: '8px',
-        overflow: 'hidden',
-        boxShadow: '0 2px 4px rgba(0,0,0,0.1)'
-      }}>
+      <div className="mongodb-query-result">
         {collapsible && (
           <div 
+            className="mongodb-header"
             onClick={() => setIsExpanded(!isExpanded)}
-            style={{
-              padding: '12px 16px',
-              backgroundColor: '#f5f5f5',
-              borderBottom: '1px solid #e0e0e0',
-              cursor: 'pointer',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'space-between',
-              userSelect: 'none'
-            }}
           >
-            <strong style={{ color: '#333', fontSize: '0.95em' }}>
-              🗄️ MongoDB Query Details
-            </strong>
-            <span style={{ fontSize: '0.9em', color: '#666' }}>
-              {isExpanded ? '▼' : '▶'}
-            </span>
+            <div className="mongodb-header-title">
+              <span className="mongodb-header-icon">🗄️</span>
+              MongoDB Query Details
+            </div>
+            <span>{isExpanded ? '▼' : '▶'}</span>
           </div>
         )}
         {(!collapsible || isExpanded) && (
-          <div style={{ padding: '16px', backgroundColor: '#fff' }}>
+          <div className="mongodb-content">
             {/* Query Block */}
             {operation.query && (
-              <div style={{ marginBottom: '20px' }}>
-                <div style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  marginBottom: '10px',
-                  paddingBottom: '8px',
-                  borderBottom: '2px solid #007bff'
-                }}>
-                  <span style={{ fontSize: '1.2em', marginRight: '8px' }}>📤</span>
-                  <strong style={{ fontSize: '1em', color: '#007bff' }}>
-                    Query Request
-                  </strong>
+              <div className="mongodb-block mongodb-block-query">
+                <div className="mongodb-block-header">
+                  <span className="mongodb-block-icon">📤</span>
+                  <h4 className="mongodb-block-title">Query Request</h4>
                 </div>
-                <div style={{
-                  backgroundColor: '#f0f7ff',
-                  border: '1px solid #b3d9ff',
-                  borderRadius: '6px',
-                  padding: '12px',
-                  overflow: 'auto',
-                  maxHeight: '400px'
-                }}>
-                  <pre style={{
-                    margin: 0,
-                    fontSize: '0.85em',
-                    fontFamily: 'Monaco, "Courier New", monospace',
-                    color: '#004085',
-                    whiteSpace: 'pre-wrap',
-                    wordBreak: 'break-word'
-                  }}>
+                <div className="mongodb-block-content">
+                  <pre className="mongodb-code">
                     {JSON.stringify(operation.query, null, 2)}
                   </pre>
                 </div>
@@ -155,47 +117,18 @@ function App() {
             
             {/* Result Block */}
             {operation.result && !operation.result.workflow_steps && (
-              <div style={{ marginBottom: '20px' }}>
-                <div style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  marginBottom: '10px',
-                  paddingBottom: '8px',
-                  borderBottom: '2px solid #28a745'
-                }}>
-                  <span style={{ fontSize: '1.2em', marginRight: '8px' }}>📥</span>
-                  <strong style={{ fontSize: '1em', color: '#28a745' }}>
-                    Query Response
-                  </strong>
+              <div className="mongodb-block mongodb-block-response">
+                <div className="mongodb-block-header">
+                  <span className="mongodb-block-icon">📥</span>
+                  <h4 className="mongodb-block-title">Query Response</h4>
                 </div>
-                <div style={{
-                  backgroundColor: '#f0fdf4',
-                  border: '1px solid #c3e6cb',
-                  borderRadius: '6px',
-                  padding: '12px',
-                  overflow: 'auto',
-                  maxHeight: '400px'
-                }}>
-                  <pre style={{
-                    margin: 0,
-                    fontSize: '0.85em',
-                    fontFamily: 'Monaco, "Courier New", monospace',
-                    color: '#155724',
-                    whiteSpace: 'pre-wrap',
-                    wordBreak: 'break-word'
-                  }}>
+                <div className="mongodb-block-content">
+                  <pre className="mongodb-code">
                     {JSON.stringify(operation.result, null, 2)}
                   </pre>
                 </div>
                 {operation.result.retrieved_documents !== undefined && (
-                  <div style={{
-                    marginTop: '12px',
-                    padding: '10px',
-                    backgroundColor: '#fff3cd',
-                    border: '1px solid #ffc107',
-                    borderRadius: '6px',
-                    fontSize: '0.9em'
-                  }}>
+                  <div className="mongodb-summary">
                     <strong>📊 Summary:</strong> Retrieved <strong>{operation.result.retrieved_documents}</strong> of <strong>{operation.result.total_documents || 'N/A'}</strong> documents
                     {operation.result.similarity_scores && operation.result.similarity_scores.length > 0 && (
                       <div style={{ marginTop: '6px' }}>
@@ -207,34 +140,36 @@ function App() {
               </div>
             )}
             
+            {/* Index Used Block */}
+            {operation.index_used && (
+              <div className="mongodb-block mongodb-block-index">
+                <div className="mongodb-block-header">
+                  <span className="mongodb-block-icon">📊</span>
+                  <h4 className="mongodb-block-title">Index Used</h4>
+                </div>
+                <div className="mongodb-block-content">
+                  <pre className="mongodb-code">
+                    {JSON.stringify(operation.index_used, null, 2)}
+                  </pre>
+                </div>
+              </div>
+            )}
+            
             {/* Metadata */}
-            <div style={{
-              display: 'flex',
-              gap: '20px',
-              paddingTop: '12px',
-              borderTop: '1px solid #e0e0e0',
-              fontSize: '0.85em',
-              color: '#666'
-            }}>
+            <div className="mongodb-metadata">
               {operation.operation && (
-                <div>
-                  <strong>Operation:</strong> <span style={{
-                    backgroundColor: '#007bff',
-                    color: 'white',
-                    padding: '2px 8px',
-                    borderRadius: '4px',
-                    fontSize: '0.85em',
-                    marginLeft: '5px'
-                  }}>{operation.operation}</span>
+                <div className="mongodb-metadata-item">
+                  <strong>Operation:</strong>
+                  <span className="mongodb-badge">{operation.operation}</span>
                 </div>
               )}
               {operation.execution_time_ms && (
-                <div>
+                <div className="mongodb-metadata-item">
                   <strong>⏱️ Time:</strong> {operation.execution_time_ms}ms
                 </div>
               )}
               {operation.documents_affected !== null && operation.documents_affected !== undefined && (
-                <div>
+                <div className="mongodb-metadata-item">
                   <strong>📄 Documents:</strong> {operation.documents_affected}
                 </div>
               )}
@@ -1113,12 +1048,6 @@ function App() {
                         {message.model && (
                           <div className="message-model">Model: {message.model}</div>
                         )}
-                        {message.mongodb_operation && (
-                          <MongoDBQueryResult 
-                            operation={message.mongodb_operation}
-                            collapsible={true}
-                          />
-                        )}
                       </div>
                     </div>
                   ))}
@@ -1259,6 +1188,24 @@ function App() {
             <div className="status-message recording-pulse">
               🔴 Recording... Click stop when done
             </div>
+          )}
+          
+          {/* MongoDB Query/Result Blocks */}
+          {queryDetails && (
+            <MongoDBQueryResult 
+              operation={{
+                query: queryDetails.mongodb_query || queryDetails.mongodb_operation?.query,
+                result: queryDetails.mongodb_operation?.result || {
+                  retrieved_documents: queryDetails.total,
+                  total_documents: queryDetails.total
+                },
+                operation: queryDetails.mongodb_operation?.operation || queryDetails.search_type,
+                execution_time_ms: queryDetails.execution_time_ms,
+                documents_affected: queryDetails.total,
+                index_used: queryDetails.index_used
+              }}
+              collapsible={true}
+            />
           )}
           </div>
           )}
@@ -1514,78 +1461,6 @@ function App() {
           )}
         </section>
       </main>
-
-      {/* Query Details Sidebar */}
-      <aside className="query-sidebar">
-        <h3>🔍 MongoDB Query Details</h3>
-        {queryDetails ? (
-          <div className="query-details">
-            <div className="detail-section">
-              <h4>Search Info</h4>
-              <div className="detail-item">
-                <span className="detail-label">Query:</span>
-                <span className="detail-value">"{queryDetails.query}"</span>
-              </div>
-              <div className="detail-item">
-                <span className="detail-label">Type:</span>
-                <span className="detail-value badge">{queryDetails.search_type}</span>
-              </div>
-              <div className="detail-item">
-                <span className="detail-label">Execution Time:</span>
-                <span className="detail-value">{queryDetails.execution_time_ms}ms</span>
-              </div>
-              <div className="detail-item">
-                <span className="detail-label">Results:</span>
-                <span className="detail-value">{queryDetails.total} documents</span>
-              </div>
-            </div>
-
-            <div className="detail-section">
-              <h4>MongoDB Query</h4>
-              <pre className="code-block">
-                {JSON.stringify(queryDetails.mongodb_query || queryDetails.mongodb_operation?.query, null, 2)}
-              </pre>
-            </div>
-
-            {queryDetails.mongodb_operation && (
-              <div className="detail-section">
-                <h4>🗄️ MongoDB Operation Details</h4>
-                <div style={{ marginBottom: '10px' }}>
-                  <strong>Operation:</strong> {queryDetails.mongodb_operation.operation}
-                </div>
-                {queryDetails.mongodb_operation.result && (
-                  <div style={{ marginBottom: '10px' }}>
-                    <strong>Result:</strong>
-                    <pre className="code-block">
-                      {JSON.stringify(queryDetails.mongodb_operation.result, null, 2)}
-                    </pre>
-                  </div>
-                )}
-              </div>
-            )}
-
-            {queryDetails.index_used && (
-              <div className="detail-section">
-                <h4>📊 Index Used</h4>
-                <pre className="code-block">
-                  {JSON.stringify(queryDetails.index_used, null, 2)}
-                </pre>
-              </div>
-            )}
-
-            <div className="detail-section">
-              <h4>Timestamp</h4>
-              <div className="detail-value timestamp">
-                {new Date(queryDetails.timestamp).toLocaleString()}
-              </div>
-            </div>
-          </div>
-        ) : (
-          <div className="no-query-message">
-            <p>🔎 Execute a search to see MongoDB query details</p>
-          </div>
-        )}
-      </aside>
       </div>
     </div>
   );
