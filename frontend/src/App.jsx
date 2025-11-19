@@ -13,6 +13,9 @@ const getApiUrl = () => {
   const protocol = window.location.protocol;
   return `${protocol}//${hostname}:30888`;
 };
+
+
+
 const API_URL = getApiUrl();
 console.log('Frontend API_URL:', API_URL);
 console.log('VITE_API_URL env:', import.meta.env.VITE_API_URL);
@@ -493,12 +496,13 @@ function App() {
           setMongodbOps(prev => ({ ...prev, chat: data.mongodb_operation }));
         }
         
-        // Add AI response to chat history
+        // Add AI response to chat history with MongoDB operation
         const aiMessage = {
           type: 'ai',
           content: data.answer,
           sources: data.sources,
-          model: data.model_used
+          model: data.model_used,
+          mongodb_operation: data.mongodb_operation
         };
         setChatHistory(prev => [...prev, aiMessage]);
       } else {
@@ -731,6 +735,97 @@ function App() {
           )}
         </section>
 
+        {/* RAG Chat Section - Collapsible - Moved right after audio upload */}
+        <section className="chat-section collapsible-section">
+          <h2 className="collapsible-header" onClick={() => toggleSection('chat')}>
+            <span className="expand-icon">{expandedSections.chat ? '▼' : '▶'}</span>
+            💬 Ask AI Questions
+          </h2>
+          {expandedSections.chat && (
+          <div className="collapsible-content">
+          <p className="section-description">
+            Use AI to ask questions and get answers based on your stored documents (RAG - Retrieval-Augmented Generation)
+          </p>
+          
+          <div className="chat-container">
+            <div className="chat-messages">
+              {chatHistory.length === 0 ? (
+                <div className="chat-welcome">
+                  <div className="welcome-icon">🤖</div>
+                  <h3>Ask me anything about your documents!</h3>
+                  <p>I'll search through your documents and provide answers based on the content.</p>
+                  <div className="example-questions">
+                    <p><strong>Try asking:</strong></p>
+                    <ul>
+                      <li>"What are the main topics discussed?"</li>
+                      <li>"Summarize the key points"</li>
+                      <li>"What did we say about [topic]?"</li>
+                    </ul>
+                  </div>
+                </div>
+              ) : (
+                <>
+                  {chatHistory.map((message, index) => (
+                    <div key={index} className={`chat-message ${message.type}`}>
+                      <div className="message-icon">
+                        {message.type === 'user' ? '👤' : message.type === 'ai' ? '🤖' : '⚠️'}
+                      </div>
+                      <div className="message-content">
+                        <div className="message-text">{message.content}</div>
+                        {message.sources && message.sources.length > 0 && (
+                          <div className="message-sources">
+                            <div className="sources-header">📚 Sources ({message.sources.length}):</div>
+                            {message.sources.map((source, idx) => (
+                              <div key={idx} className="source-item">
+                                <strong>{source.title}</strong>
+                                <p>{source.body.substring(0, 100)}...</p>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                        {message.model && (
+                          <div className="message-model">Model: {message.model}</div>
+                        )}
+                        {message.mongodb_operation && (
+                          <div style={{ marginTop: '15px' }}>
+                            <MongoDBOperationDetails 
+                              operation={message.mongodb_operation} 
+                              title="MongoDB Query Details"
+                            />
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                  <div ref={chatEndRef} />
+                </>
+              )}
+            </div>
+            
+            <form onSubmit={askQuestion} className="chat-input-form">
+              <input
+                type="text"
+                value={chatQuestion}
+                onChange={(e) => setChatQuestion(e.target.value)}
+                placeholder="Ask a question about your documents..."
+                className="chat-input"
+                disabled={isAsking}
+              />
+              <button type="submit" disabled={isAsking || !chatQuestion.trim()} className="chat-send-button">
+                {isAsking ? '⏳' : '📤'} {isAsking ? 'Thinking...' : 'Ask'}
+              </button>
+            </form>
+          </div>
+          {mongodbOps.chat && (
+            <MongoDBOperationDetails 
+              operation={mongodbOps.chat} 
+              title="RAG Document Retrieval"
+            />
+          )}
+          </div>
+          )}
+        </section>
+
         {/* Add Text Document Section - Collapsible */}
         <section className="form-section collapsible-section">
           <h2 className="collapsible-header" onClick={() => toggleSection('addDocument')}>
@@ -839,89 +934,6 @@ function App() {
             <div className="status-message recording-pulse">
               🔴 Recording... Click stop when done
             </div>
-          )}
-          </div>
-          )}
-        </section>
-
-        {/* RAG Chat Section - Collapsible */}
-        <section className="chat-section collapsible-section">
-          <h2 className="collapsible-header" onClick={() => toggleSection('chat')}>
-            <span className="expand-icon">{expandedSections.chat ? '▼' : '▶'}</span>
-            💬 Ask AI Questions
-          </h2>
-          {expandedSections.chat && (
-          <div className="collapsible-content">
-          <p className="section-description">
-            Use AI to ask questions and get answers based on your stored documents (RAG - Retrieval-Augmented Generation)
-          </p>
-          
-          <div className="chat-container">
-            <div className="chat-messages">
-              {chatHistory.length === 0 ? (
-                <div className="chat-welcome">
-                  <div className="welcome-icon">🤖</div>
-                  <h3>Ask me anything about your documents!</h3>
-                  <p>I'll search through your documents and provide answers based on the content.</p>
-                  <div className="example-questions">
-                    <p><strong>Try asking:</strong></p>
-                    <ul>
-                      <li>"What are the main topics discussed?"</li>
-                      <li>"Summarize the key points"</li>
-                      <li>"What did we say about [topic]?"</li>
-                    </ul>
-                  </div>
-                </div>
-              ) : (
-                <>
-                  {chatHistory.map((message, index) => (
-                    <div key={index} className={`chat-message ${message.type}`}>
-                      <div className="message-icon">
-                        {message.type === 'user' ? '👤' : message.type === 'ai' ? '🤖' : '⚠️'}
-                      </div>
-                      <div className="message-content">
-                        <div className="message-text">{message.content}</div>
-                        {message.sources && message.sources.length > 0 && (
-                          <div className="message-sources">
-                            <div className="sources-header">📚 Sources ({message.sources.length}):</div>
-                            {message.sources.map((source, idx) => (
-                              <div key={idx} className="source-item">
-                                <strong>{source.title}</strong>
-                                <p>{source.body.substring(0, 100)}...</p>
-                              </div>
-                            ))}
-                          </div>
-                        )}
-                        {message.model && (
-                          <div className="message-model">Model: {message.model}</div>
-                        )}
-                      </div>
-                    </div>
-                  ))}
-                  <div ref={chatEndRef} />
-                </>
-              )}
-            </div>
-            
-            <form onSubmit={askQuestion} className="chat-input-form">
-              <input
-                type="text"
-                value={chatQuestion}
-                onChange={(e) => setChatQuestion(e.target.value)}
-                placeholder="Ask a question about your documents..."
-                className="chat-input"
-                disabled={isAsking}
-              />
-              <button type="submit" disabled={isAsking || !chatQuestion.trim()} className="chat-send-button">
-                {isAsking ? '⏳' : '📤'} {isAsking ? 'Thinking...' : 'Ask'}
-              </button>
-            </form>
-          </div>
-          {mongodbOps.chat && (
-            <MongoDBOperationDetails 
-              operation={mongodbOps.chat} 
-              title="RAG Document Retrieval"
-            />
           )}
           </div>
           )}
