@@ -29,7 +29,7 @@ echo -e "${NC}"
 # Configuration
 NAMESPACE="mongodb"
 BACKEND_IMAGE="azuremongosearch-backend:latest"
-FRONTEND_IMAGE="azuremongosearch-frontend:latest"
+FRONTEND_IMAGE="document-search-frontend:fixed-v1"
 BACKEND_PORT=8888
 FRONTEND_PORT=5173
 
@@ -214,7 +214,7 @@ OLLAMA_PORT="11434"
 OLLAMA_URL="http://${OLLAMA_SERVICE}:${OLLAMA_PORT}"
 
 # Get Ollama model from ConfigMap if it exists
-OLLAMA_MODEL=$(kubectl get configmap ai-models-config -n ${NAMESPACE} -o jsonpath='{.data.OLLAMA_MODEL}' 2>/dev/null || echo "phi")
+OLLAMA_MODEL=$(kubectl get configmap ai-models-config -n ${NAMESPACE} -o jsonpath='{.data.OLLAMA_MODEL}' 2>/dev/null || echo "llama2")
 
 log_info "Ollama connection: ${OLLAMA_SERVICE}:${OLLAMA_PORT}"
 log_info "Ollama model: ${OLLAMA_MODEL}"
@@ -259,7 +259,7 @@ spec:
       containers:
       - name: backend
         image: ${BACKEND_IMAGE}
-        imagePullPolicy: Never
+        imagePullPolicy: IfNotPresent
         ports:
         - containerPort: ${BACKEND_PORT}
         envFrom:
@@ -382,7 +382,7 @@ spec:
       containers:
       - name: frontend
         image: ${FRONTEND_IMAGE}
-        imagePullPolicy: Never
+        imagePullPolicy: IfNotPresent
         ports:
         - containerPort: ${FRONTEND_PORT}
         env:
