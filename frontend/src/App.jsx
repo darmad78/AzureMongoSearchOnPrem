@@ -1048,6 +1048,12 @@ function App() {
                         {message.model && (
                           <div className="message-model">Model: {message.model}</div>
                         )}
+                        {message.mongodb_operation && (
+                          <MongoDBOperationDetails 
+                            operation={message.mongodb_operation} 
+                            title="RAG Search"
+                          />
+                        )}
                       </div>
                     </div>
                   ))}
@@ -1070,12 +1076,6 @@ function App() {
               </button>
             </form>
           </div>
-          {mongodbOps.chat && (
-            <MongoDBQueryResult 
-              operation={mongodbOps.chat}
-              collapsible={true}
-            />
-          )}
           </div>
           )}
         </section>
