@@ -53,9 +53,19 @@ function App() {
     addDocument: false,
     search: true,
     chat: false,
-    documents: true  // Expanded by default to show documents
+    documents: true,  // Expanded by default to show documents
+    health: false
   });
   const [isLoadingDocuments, setIsLoadingDocuments] = useState(true);
+  
+  // Health check state
+  const [healthData, setHealthData] = useState({
+    backend: null,
+    ollama: null,
+    mongodb: null,
+    isLoading: false,
+    lastChecked: null
+  });
   
   const toggleSection = (section) => {
     setExpandedSections(prev => ({
@@ -114,7 +124,88 @@ function App() {
             </pre>
           </div>
         )}
-        {operation.result && (
+        {operation.result && operation.result.workflow_steps && (
+          <div style={{ marginBottom: '15px' }}>
+            <strong>📋 Workflow Steps:</strong>
+            <div style={{ marginTop: '10px' }}>
+              {operation.result.workflow_steps.map((step, idx) => (
+                <div key={idx} style={{
+                  marginBottom: '12px',
+                  padding: '12px',
+                  backgroundColor: '#fff',
+                  border: '1px solid #dee2e6',
+                  borderRadius: '6px',
+                  borderLeft: '4px solid #28a745'
+                }}>
+                  <div style={{ display: 'flex', alignItems: 'center', marginBottom: '8px' }}>
+                    <span style={{
+                      backgroundColor: '#28a745',
+                      color: 'white',
+                      borderRadius: '50%',
+                      width: '24px',
+                      height: '24px',
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      fontSize: '0.85em',
+                      fontWeight: 'bold',
+                      marginRight: '10px'
+                    }}>
+                      {step.step}
+                    </span>
+                    <strong style={{ fontSize: '0.95em' }}>{step.name}</strong>
+                    {step.details.duration_ms && (
+                      <span style={{
+                        marginLeft: 'auto',
+                        fontSize: '0.8em',
+                        color: '#6c757d'
+                      }}>
+                        {step.details.duration_ms}ms
+                      </span>
+                    )}
+                  </div>
+                  <div style={{ marginLeft: '34px', fontSize: '0.85em', color: '#495057' }}>
+                    {Object.entries(step.details).filter(([key]) => key !== 'duration_ms').map(([key, value]) => (
+                      <div key={key} style={{ marginBottom: '4px' }}>
+                        <strong>{key.replace(/_/g, ' ')}:</strong> {
+                          typeof value === 'object' ? (
+                            <pre style={{
+                              display: 'inline-block',
+                              margin: '4px 0 0 0',
+                              padding: '6px',
+                              backgroundColor: '#f8f9fa',
+                              borderRadius: '4px',
+                              fontSize: '0.8em',
+                              maxWidth: '100%',
+                              overflow: 'auto'
+                            }}>
+                              {JSON.stringify(value, null, 2)}
+                            </pre>
+                          ) : (
+                            <span> {String(value)}</span>
+                          )
+                        }
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+            {operation.result.total_duration_ms && (
+              <div style={{
+                marginTop: '10px',
+                padding: '8px',
+                backgroundColor: '#e7f3ff',
+                borderRadius: '4px',
+                textAlign: 'center',
+                fontWeight: 'bold'
+              }}>
+                ⏱️ Total Duration: {operation.result.total_duration_ms}ms
+              </div>
+            )}
+          </div>
+        )}
+        {operation.result && !operation.result.workflow_steps && (
           <div style={{ marginBottom: '10px' }}>
             <strong>Result:</strong>
             <pre style={{ 
@@ -435,6 +526,84 @@ function App() {
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [chatHistory]);
 
+  // Health check function
+  const checkHealth = async () => {
+    setHealthData(prev => ({ ...prev, isLoading: true }));
+    const health = {
+      backend: null,
+      ollama: null,
+      mongodb: null,
+      lastChecked: new Date().toISOString()
+    };
+
+    // Check backend API
+    try {
+      const backendResponse = await fetch(`${API_URL}/`);
+      health.backend = {
+        status: backendResponse.ok ? 'healthy' : 'unhealthy',
+        message: backendResponse.ok ? 'Backend API is running' : `HTTP ${backendResponse.status}`,
+        timestamp: new Date().toISOString()
+      };
+    } catch (error) {
+      health.backend = {
+        status: 'error',
+        message: `Cannot connect to backend: ${error.message}`,
+        timestamp: new Date().toISOString()
+      };
+    }
+
+    // Check Ollama
+    try {
+      const ollamaResponse = await fetch(`${API_URL}/health/ollama`);
+      const ollamaData = await ollamaResponse.json();
+      health.ollama = {
+        status: ollamaData.status || 'unknown',
+        message: ollamaData.message || 'Unknown status',
+        model_available: ollamaData.model_available || false,
+        ollama_url: ollamaData.ollama_url || 'N/A',
+        ollama_model: ollamaData.ollama_model || 'N/A',
+        timestamp: new Date().toISOString()
+      };
+    } catch (error) {
+      health.ollama = {
+        status: 'error',
+        message: `Cannot check Ollama health: ${error.message}`,
+        timestamp: new Date().toISOString()
+      };
+    }
+
+    // Check MongoDB (by trying to fetch documents count)
+    try {
+      const mongoResponse = await fetch(`${API_URL}/documents`);
+      if (mongoResponse.ok) {
+        const docs = await mongoResponse.json();
+        health.mongodb = {
+          status: 'healthy',
+          message: `Connected to MongoDB. ${docs.length} documents found.`,
+          document_count: docs.length,
+          timestamp: new Date().toISOString()
+        };
+      } else {
+        health.mongodb = {
+          status: 'unhealthy',
+          message: `MongoDB connection issue: HTTP ${mongoResponse.status}`,
+          timestamp: new Date().toISOString()
+        };
+      }
+    } catch (error) {
+      health.mongodb = {
+        status: 'error',
+        message: `Cannot connect to MongoDB: ${error.message}`,
+        timestamp: new Date().toISOString()
+      };
+    }
+
+    setHealthData({
+      ...health,
+      isLoading: false
+    });
+  };
+
   useEffect(() => {
     fetchDocuments();
   }, []);
@@ -443,6 +612,29 @@ function App() {
     <div className="App">
       <header className="App-header">
         <h1>Document Search App</h1>
+        <button 
+          onClick={() => {
+            toggleSection('health');
+            if (!expandedSections.health) {
+              checkHealth();
+            }
+          }}
+          style={{
+            position: 'absolute',
+            top: '20px',
+            right: '20px',
+            padding: '10px 20px',
+            backgroundColor: expandedSections.health ? '#28a745' : '#007bff',
+            color: 'white',
+            border: 'none',
+            borderRadius: '5px',
+            cursor: 'pointer',
+            fontSize: '14px',
+            fontWeight: 'bold'
+          }}
+        >
+          {expandedSections.health ? '🟢 Health' : '⚕️ Health Check'}
+        </button>
       </header>
 
       <div className="app-container">
@@ -732,6 +924,197 @@ function App() {
             />
           )}
           </div>
+          )}
+        </section>
+
+        {/* Health Check Section - Collapsible */}
+        <section className="form-section collapsible-section">
+          <h2 className="collapsible-header" onClick={() => {
+            toggleSection('health');
+            if (!expandedSections.health && !healthData.isLoading) {
+              checkHealth();
+            }
+          }}>
+            <span className="expand-icon">{expandedSections.health ? '▼' : '▶'}</span>
+            ⚕️ System Health
+          </h2>
+          {expandedSections.health && (
+            <div className="collapsible-content">
+              <div style={{ marginBottom: '20px' }}>
+                <button 
+                  onClick={checkHealth}
+                  disabled={healthData.isLoading}
+                  style={{
+                    padding: '10px 20px',
+                    backgroundColor: '#007bff',
+                    color: 'white',
+                    border: 'none',
+                    borderRadius: '5px',
+                    cursor: healthData.isLoading ? 'not-allowed' : 'pointer',
+                    fontSize: '14px',
+                    fontWeight: 'bold',
+                    opacity: healthData.isLoading ? 0.6 : 1
+                  }}
+                >
+                  {healthData.isLoading ? '⏳ Checking...' : '🔄 Refresh Health Status'}
+                </button>
+                {healthData.lastChecked && (
+                  <span style={{ marginLeft: '15px', color: '#666', fontSize: '0.9em' }}>
+                    Last checked: {new Date(healthData.lastChecked).toLocaleString()}
+                  </span>
+                )}
+              </div>
+
+              {healthData.isLoading && !healthData.backend && (
+                <div style={{ padding: '20px', textAlign: 'center' }}>
+                  <p>⏳ Checking system health...</p>
+                </div>
+              )}
+
+              {/* Backend Health */}
+              <div style={{
+                marginBottom: '20px',
+                padding: '15px',
+                backgroundColor: '#f8f9fa',
+                border: '1px solid #dee2e6',
+                borderRadius: '8px'
+              }}>
+                <h3 style={{ marginTop: 0, display: 'flex', alignItems: 'center', gap: '10px' }}>
+                  <span style={{
+                    fontSize: '20px',
+                    color: healthData.backend?.status === 'healthy' ? '#28a745' : 
+                           healthData.backend?.status === 'error' ? '#dc3545' : '#ffc107'
+                  }}>
+                    {healthData.backend?.status === 'healthy' ? '🟢' : 
+                     healthData.backend?.status === 'error' ? '🔴' : '🟡'}
+                  </span>
+                  Backend API
+                </h3>
+                {healthData.backend ? (
+                  <div>
+                    <p><strong>Status:</strong> <span style={{
+                      color: healthData.backend.status === 'healthy' ? '#28a745' : 
+                             healthData.backend.status === 'error' ? '#dc3545' : '#ffc107',
+                      fontWeight: 'bold'
+                    }}>{healthData.backend.status.toUpperCase()}</span></p>
+                    <p><strong>Message:</strong> {healthData.backend.message}</p>
+                    <p style={{ fontSize: '0.85em', color: '#666' }}>
+                      API URL: {API_URL}
+                    </p>
+                  </div>
+                ) : (
+                  <p>Not checked yet</p>
+                )}
+              </div>
+
+              {/* Ollama Health */}
+              <div style={{
+                marginBottom: '20px',
+                padding: '15px',
+                backgroundColor: '#f8f9fa',
+                border: '1px solid #dee2e6',
+                borderRadius: '8px'
+              }}>
+                <h3 style={{ marginTop: 0, display: 'flex', alignItems: 'center', gap: '10px' }}>
+                  <span style={{
+                    fontSize: '20px',
+                    color: healthData.ollama?.status === 'healthy' ? '#28a745' : 
+                           healthData.ollama?.status === 'error' || healthData.ollama?.status === 'unhealthy' ? '#dc3545' : '#ffc107'
+                  }}>
+                    {healthData.ollama?.status === 'healthy' ? '🟢' : 
+                     healthData.ollama?.status === 'error' || healthData.ollama?.status === 'unhealthy' ? '🔴' : '🟡'}
+                  </span>
+                  Ollama LLM Service
+                </h3>
+                {healthData.ollama ? (
+                  <div>
+                    <p><strong>Status:</strong> <span style={{
+                      color: healthData.ollama.status === 'healthy' ? '#28a745' : 
+                             healthData.ollama.status === 'error' || healthData.ollama.status === 'unhealthy' ? '#dc3545' : '#ffc107',
+                      fontWeight: 'bold'
+                    }}>{healthData.ollama.status.toUpperCase()}</span></p>
+                    <p><strong>Message:</strong> {healthData.ollama.message}</p>
+                    {healthData.ollama.ollama_url && (
+                      <p><strong>Ollama URL:</strong> {healthData.ollama.ollama_url}</p>
+                    )}
+                    {healthData.ollama.ollama_model && (
+                      <p><strong>Model:</strong> {healthData.ollama.ollama_model}</p>
+                    )}
+                    <p><strong>Model Available:</strong> 
+                      <span style={{
+                        color: healthData.ollama.model_available ? '#28a745' : '#dc3545',
+                        fontWeight: 'bold',
+                        marginLeft: '5px'
+                      }}>
+                        {healthData.ollama.model_available ? '✅ Yes' : '❌ No'}
+                      </span>
+                    </p>
+                    {!healthData.ollama.model_available && healthData.ollama.ollama_model && (
+                      <div style={{
+                        marginTop: '10px',
+                        padding: '10px',
+                        backgroundColor: '#fff3cd',
+                        border: '1px solid #ffc107',
+                        borderRadius: '5px',
+                        fontSize: '0.9em'
+                      }}>
+                        <strong>⚠️ Model not available!</strong>
+                        <p style={{ margin: '5px 0 0 0' }}>
+                          Pull the model with:
+                        </p>
+                        <code style={{
+                          display: 'block',
+                          marginTop: '5px',
+                          padding: '5px',
+                          backgroundColor: '#f8f9fa',
+                          borderRadius: '3px'
+                        }}>
+                          kubectl exec &lt;ollama-pod&gt; -n mongodb -- ollama pull {healthData.ollama.ollama_model}
+                        </code>
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <p>Not checked yet</p>
+                )}
+              </div>
+
+              {/* MongoDB Health */}
+              <div style={{
+                marginBottom: '20px',
+                padding: '15px',
+                backgroundColor: '#f8f9fa',
+                border: '1px solid #dee2e6',
+                borderRadius: '8px'
+              }}>
+                <h3 style={{ marginTop: 0, display: 'flex', alignItems: 'center', gap: '10px' }}>
+                  <span style={{
+                    fontSize: '20px',
+                    color: healthData.mongodb?.status === 'healthy' ? '#28a745' : 
+                           healthData.mongodb?.status === 'error' ? '#dc3545' : '#ffc107'
+                  }}>
+                    {healthData.mongodb?.status === 'healthy' ? '🟢' : 
+                     healthData.mongodb?.status === 'error' ? '🔴' : '🟡'}
+                  </span>
+                  MongoDB Database
+                </h3>
+                {healthData.mongodb ? (
+                  <div>
+                    <p><strong>Status:</strong> <span style={{
+                      color: healthData.mongodb.status === 'healthy' ? '#28a745' : 
+                             healthData.mongodb.status === 'error' ? '#dc3545' : '#ffc107',
+                      fontWeight: 'bold'
+                    }}>{healthData.mongodb.status.toUpperCase()}</span></p>
+                    <p><strong>Message:</strong> {healthData.mongodb.message}</p>
+                    {healthData.mongodb.document_count !== undefined && (
+                      <p><strong>Documents:</strong> {healthData.mongodb.document_count}</p>
+                    )}
+                  </div>
+                ) : (
+                  <p>Not checked yet</p>
+                )}
+              </div>
+            </div>
           )}
         </section>
 

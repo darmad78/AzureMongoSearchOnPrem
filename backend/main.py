@@ -2,7 +2,7 @@ from fastapi import FastAPI, HTTPException, UploadFile, File, Form
 from fastapi.middleware.cors import CORSMiddleware
 from pymongo import MongoClient
 from pydantic import BaseModel
-from typing import List, Optional
+from typing import List, Optional, Tuple
 import os
 import whisper
 from sentence_transformers import SentenceTransformer
@@ -154,6 +154,26 @@ class ChatResponse(BaseModel):
 async def root():
     return {"message": "Document Search API is running"}
 
+@app.get("/health/ollama")
+async def check_ollama_health():
+    """Check Ollama service health and model availability"""
+    if LLM_PROVIDER != "ollama":
+        return {
+            "status": "not_configured",
+            "message": f"LLM provider is set to '{LLM_PROVIDER}', not 'ollama'",
+            "ollama_url": OLLAMA_URL,
+            "ollama_model": OLLAMA_MODEL
+        }
+    
+    model_available, check_message = check_ollama_model()
+    return {
+        "status": "healthy" if model_available else "unhealthy",
+        "message": check_message,
+        "ollama_url": OLLAMA_URL,
+        "ollama_model": OLLAMA_MODEL,
+        "model_available": model_available
+    }
+
 @app.post("/documents", response_model=DocumentResponse)
 async def create_document(document: Document):
     import time
@@ -235,13 +255,29 @@ async def create_document_from_audio(
     - tags: Optional comma-separated tags
     - language: Optional language code (en, es, fr, de, it, etc.) - auto-detect if not provided
     """
+    import time
+    workflow_steps = []
+    total_start_time = time.time()
+    
     try:
-        # Save uploaded file temporarily
+        # Step 1: Upload audio file
+        step_start = time.time()
         with tempfile.NamedTemporaryFile(delete=False, suffix=os.path.splitext(audio.filename)[1]) as temp_audio:
             shutil.copyfileobj(audio.file, temp_audio)
             temp_path = temp_audio.name
+        workflow_steps.append({
+            "step": 1,
+            "name": "Upload Audio File",
+            "status": "completed",
+            "details": {
+                "filename": audio.filename,
+                "file_size_bytes": os.path.getsize(temp_path),
+                "duration_ms": round((time.time() - step_start) * 1000, 2)
+            }
+        })
         
-        # Transcribe audio with optional language
+        # Step 2: Transcribe audio to text
+        step_start = time.time()
         transcribe_options = {}
         if language:
             print(f"Using user-specified language: {language}")
@@ -254,47 +290,76 @@ async def create_document_from_audio(
         detected_language = transcription_result.get("language", language or "unknown")
         print(f"Transcription complete. Detected language: {detected_language}, Text preview: {transcribed_text[:100]}")
         
+        workflow_steps.append({
+            "step": 2,
+            "name": "Transcribe Audio to Text",
+            "status": "completed",
+            "details": {
+                "detected_language": detected_language,
+                "transcription_length": len(transcribed_text),
+                "transcription_preview": transcribed_text[:200] + ("..." if len(transcribed_text) > 200 else ""),
+                "duration_ms": round((time.time() - step_start) * 1000, 2)
+            }
+        })
+        
         # Clean up temp file
         os.unlink(temp_path)
         
-        # Use transcribed text as title if not provided
+        # Step 3: Prepare document metadata
+        step_start = time.time()
         if not title:
-            # Use first 50 chars of transcription as title
             title = transcribed_text[:50] + ("..." if len(transcribed_text) > 50 else "")
         
-        # Parse tags
         tags_list = []
         if tags:
             tags_list = [tag.strip() for tag in tags.split(',') if tag.strip()]
-        
-        # Add language as a tag
         tags_list.append(f"language:{detected_language}")
         tags_list.append("audio-transcription")
         
-        # Map to MongoDB supported languages (or 'none' if unsupported)
-        # MongoDB supported: da, nl, en, fi, fr, de, hu, it, nb, pt, ro, ru, es, sv, tr
         supported_languages = ['da', 'nl', 'en', 'fi', 'fr', 'de', 'hu', 'it', 'nb', 'pt', 'ro', 'ru', 'es', 'sv', 'tr']
         mongodb_language = detected_language if detected_language in supported_languages else 'none'
         
-        # Create document
+        workflow_steps.append({
+            "step": 3,
+            "name": "Prepare Document Metadata",
+            "status": "completed",
+            "details": {
+                "title": title,
+                "tags": tags_list,
+                "mongodb_language": mongodb_language,
+                "duration_ms": round((time.time() - step_start) * 1000, 2)
+            }
+        })
+        
+        # Step 4: Generate embedding
+        step_start = time.time()
+        text_for_embedding = f"{title} {transcribed_text} {' '.join(tags_list)}"
+        embedding = embedding_model.encode(text_for_embedding).tolist()
+        
+        workflow_steps.append({
+            "step": 4,
+            "name": "Generate Embedding Vector",
+            "status": "completed",
+            "details": {
+                "embedding_dimensions": len(embedding),
+                "model": "all-MiniLM-L6-v2",
+                "text_length": len(text_for_embedding),
+                "duration_ms": round((time.time() - step_start) * 1000, 2)
+            }
+        })
+        
+        # Step 5: Create document and insert into MongoDB
+        step_start = time.time()
         doc_dict = {
             "title": title,
             "body": transcribed_text,
             "tags": tags_list,
             "source": "audio",
             "audio_filename": audio.filename,
-            "detected_language": detected_language,  # Keep original for reference
-            "language": mongodb_language  # Use supported language for MongoDB
+            "detected_language": detected_language,
+            "language": mongodb_language,
+            "embedding": embedding
         }
-        
-        # Generate embedding
-        text_for_embedding = f"{doc_dict['title']} {doc_dict['body']} {' '.join(doc_dict['tags'])}"
-        embedding = embedding_model.encode(text_for_embedding).tolist()
-        doc_dict['embedding'] = embedding
-        
-        # Insert into MongoDB
-        import time
-        start_time = time.time()
         
         insert_query = {
             "insertOne": {
@@ -302,7 +367,7 @@ async def create_document_from_audio(
                     "title": doc_dict['title'],
                     "body": f"{doc_dict['body'][:100]}...",
                     "tags": doc_dict['tags'],
-                    "embedding": "[384-dimensional vector]",
+                    "embedding": f"[{len(embedding)}-dimensional vector]",
                     "source": "audio",
                     "audio_filename": audio.filename,
                     "detected_language": detected_language
@@ -311,16 +376,43 @@ async def create_document_from_audio(
         }
         
         result = documents.insert_one(doc_dict)
-        execution_time = (time.time() - start_time) * 1000
+        mongodb_execution_time = (time.time() - step_start) * 1000
+        
+        # Get the inserted document
+        inserted_doc = documents.find_one({"_id": result.inserted_id})
+        
+        workflow_steps.append({
+            "step": 5,
+            "name": "Insert into MongoDB",
+            "status": "completed",
+            "details": {
+                "inserted_id": str(result.inserted_id),
+                "acknowledged": result.acknowledged,
+                "duration_ms": round(mongodb_execution_time, 2),
+                "document": {
+                    "_id": str(inserted_doc["_id"]),
+                    "title": inserted_doc.get("title", ""),
+                    "body_preview": inserted_doc.get("body", "")[:200] + ("..." if len(inserted_doc.get("body", "")) > 200 else ""),
+                    "tags": inserted_doc.get("tags", []),
+                    "source": inserted_doc.get("source", ""),
+                    "has_embedding": "embedding" in inserted_doc,
+                    "embedding_dimensions": len(inserted_doc.get("embedding", [])) if "embedding" in inserted_doc else 0
+                }
+            }
+        })
+        
+        total_execution_time = (time.time() - total_start_time) * 1000
         
         mongodb_op = MongoDBOperation(
             operation="insertOne",
             query=insert_query,
             result={
                 "inserted_id": str(result.inserted_id),
-                "acknowledged": result.acknowledged
+                "acknowledged": result.acknowledged,
+                "workflow_steps": workflow_steps,
+                "total_duration_ms": round(total_execution_time, 2)
             },
-            execution_time_ms=round(execution_time, 2),
+            execution_time_ms=round(mongodb_execution_time, 2),
             documents_affected=1
         )
         
@@ -707,6 +799,36 @@ async def search_documents(q: str):
             mongodb_operation=mongodb_op
         )
 
+# Helper function to check if Ollama model is available
+def check_ollama_model() -> Tuple[bool, str]:
+    """Check if Ollama is accessible and model is available"""
+    try:
+        # Check if Ollama is reachable and get list of available models
+        models_response = requests.get(f"{OLLAMA_URL}/api/tags", timeout=5)
+        if models_response.status_code != 200:
+            return False, f"Ollama health check failed: HTTP {models_response.status_code}"
+        
+        models_data = models_response.json()
+        available_models = [model.get("name", "") for model in models_data.get("models", [])]
+        
+        # Check if the requested model exists (exact match or starts with)
+        model_found = False
+        for model_name in available_models:
+            if model_name == OLLAMA_MODEL or model_name.startswith(f"{OLLAMA_MODEL}:"):
+                model_found = True
+                break
+        
+        if not model_found:
+            return False, f"Model '{OLLAMA_MODEL}' not found. Available models: {', '.join(available_models) if available_models else 'none'}. Pull the model with: kubectl exec <ollama-pod> -n mongodb -- ollama pull {OLLAMA_MODEL}"
+        
+        return True, "Model available"
+    except requests.exceptions.ConnectionError:
+        return False, f"Cannot connect to Ollama at {OLLAMA_URL}. Make sure Ollama is running and accessible."
+    except requests.exceptions.Timeout:
+        return False, f"Ollama connection timeout at {OLLAMA_URL}. Ollama may be starting up or overloaded."
+    except Exception as e:
+        return False, f"Error checking Ollama: {str(e)}"
+
 # Helper function to call LLM
 def call_llm(prompt: str, context: str) -> str:
     """Call LLM with prompt and context"""
@@ -727,6 +849,14 @@ def call_llm(prompt: str, context: str) -> str:
             raise HTTPException(status_code=500, detail=f"OpenAI API error: {str(e)}")
     
     elif LLM_PROVIDER == "ollama":
+        # Check if model is available before making the request
+        model_available, check_message = check_ollama_model()
+        if not model_available:
+            raise HTTPException(
+                status_code=503,
+                detail=f"Ollama model not ready: {check_message}"
+            )
+        
         # Ollama API call
         try:
             response = requests.post(
@@ -749,12 +879,52 @@ Answer:""",
                 },
                 timeout=60
             )
-            response.raise_for_status()
-            return response.json()["response"]
+            
+            # Handle non-200 status codes with better error messages
+            if response.status_code != 200:
+                try:
+                    error_data = response.json()
+                    error_msg = error_data.get("error", f"HTTP {response.status_code}")
+                    if "model" in error_msg.lower() and "not found" in error_msg.lower():
+                        raise HTTPException(
+                            status_code=503,
+                            detail=f"Model '{OLLAMA_MODEL}' not found in Ollama. Please pull it first: kubectl exec <ollama-pod> -n mongodb -- ollama pull {OLLAMA_MODEL}"
+                        )
+                    raise HTTPException(
+                        status_code=response.status_code,
+                        detail=f"Ollama API error: {error_msg}"
+                    )
+                except ValueError:
+                    # Response is not JSON
+                    raise HTTPException(
+                        status_code=response.status_code,
+                        detail=f"Ollama error: HTTP {response.status_code} - {response.text[:200]}"
+                    )
+            
+            result = response.json()
+            if "response" not in result:
+                raise HTTPException(
+                    status_code=500,
+                    detail=f"Unexpected Ollama response format: {list(result.keys())}"
+                )
+            
+            return result["response"]
+        except HTTPException:
+            raise  # Re-raise HTTPExceptions as-is
+        except requests.exceptions.ConnectionError as e:
+            raise HTTPException(
+                status_code=503,
+                detail=f"Cannot connect to Ollama at {OLLAMA_URL}. Make sure Ollama is running and accessible."
+            )
+        except requests.exceptions.Timeout as e:
+            raise HTTPException(
+                status_code=504,
+                detail=f"Ollama request timeout. The model may be processing a large request or Ollama may be overloaded."
+            )
         except requests.exceptions.RequestException as e:
             raise HTTPException(
                 status_code=500, 
-                detail=f"Ollama error: {str(e)}. Make sure Ollama is running at {OLLAMA_URL}"
+                detail=f"Ollama request error: {str(e)}. Make sure Ollama is running at {OLLAMA_URL}"
             )
     else:
         raise HTTPException(
