@@ -50,11 +50,63 @@ client = MongoClient(MONGODB_URL)
 db = client.searchdb
 documents = db.documents
 
-# Create text index on first run
+# Create MongoDB Search index (for $search aggregation - Full-Text Search)
+# This requires MongoDB Enterprise with mongot (search nodes)
 try:
-    documents.create_index([("title", "text"), ("body", "text"), ("tags", "text")])
+    print("Creating MongoDB Search index for $search aggregation...")
+    db.command({
+        "createSearchIndexes": "documents",
+        "indexes": [
+            {
+                "name": "default",
+                "definition": {
+                    "mappings": {
+                        "dynamic": True
+                    }
+                }
+            }
+        ]
+    })
+    print("✅ Full-Text Search index 'default' created (for $search aggregation)")
 except Exception as e:
-    print(f"Index creation note: {e}")
+    error_msg = str(e)
+    if "SearchNotEnabled" in error_msg or "31082" in error_msg:
+        print("⚠️  MongoDB Search not enabled. $search aggregation will not work.")
+        print("   To enable: Deploy mongot search nodes (Phase 3)")
+    else:
+        print(f"⚠️  Search index creation: {e}")
+
+# Create Vector Search index (for $vectorSearch aggregation)
+# This requires MongoDB Enterprise with mongot and the embedding field
+try:
+    print("Creating Vector Search index...")
+    db.command({
+        "createSearchIndexes": "documents",
+        "indexes": [
+            {
+                "name": "vector_index",
+                "type": "vectorSearch",
+                "definition": {
+                    "fields": [
+                        {
+                            "type": "vector",
+                            "path": "embedding",
+                            "numDimensions": 384,  # all-MiniLM-L6-v2 dimensions
+                            "similarity": "cosine"
+                        }
+                    ]
+                }
+            }
+        ]
+    })
+    print("✅ Vector Search index 'vector_index' created/verified")
+except Exception as e:
+    error_msg = str(e)
+    if "SearchNotEnabled" in error_msg or "31082" in error_msg:
+        print("⚠️  Vector Search not enabled. $vectorSearch aggregation will not work.")
+        print("   To enable: Deploy mongot search nodes (Phase 3)")
+    else:
+        print(f"⚠️  Vector Search index creation: {e}")
 
 # Models
 class Document(BaseModel):
@@ -62,11 +114,20 @@ class Document(BaseModel):
     body: str
     tags: List[str]
 
+class MongoDBOperation(BaseModel):
+    operation: str  # "insertOne", "find", "aggregate", etc.
+    query: Optional[dict] = None
+    result: Optional[dict] = None
+    execution_time_ms: Optional[float] = None
+    documents_affected: Optional[int] = None
+    index_used: Optional[dict] = None
+
 class DocumentResponse(BaseModel):
     id: str
     title: str
     body: str
     tags: List[str]
+    mongodb_operation: Optional[MongoDBOperation] = None
 
 class SearchResponse(BaseModel):
     query: str
@@ -75,6 +136,8 @@ class SearchResponse(BaseModel):
     mongodb_query: Optional[dict] = None
     execution_time_ms: Optional[float] = None
     search_type: Optional[str] = None
+    index_used: Optional[dict] = None  # Index information
+    mongodb_operation: Optional[MongoDBOperation] = None
 
 class ChatRequest(BaseModel):
     question: str
@@ -85,6 +148,7 @@ class ChatResponse(BaseModel):
     answer: str
     sources: List[DocumentResponse]
     model_used: str
+    mongodb_operation: Optional[MongoDBOperation] = None
 
 @app.get("/")
 async def root():
@@ -92,16 +156,46 @@ async def root():
 
 @app.post("/documents", response_model=DocumentResponse)
 async def create_document(document: Document):
+    import time
+    start_time = time.time()
+    
     doc_dict = document.dict()
     # Generate embedding for the document
     text_for_embedding = f"{doc_dict['title']} {doc_dict['body']} {' '.join(doc_dict['tags'])}"
     embedding = embedding_model.encode(text_for_embedding).tolist()
     doc_dict['embedding'] = embedding
     
+    # Prepare MongoDB operation info
+    insert_query = {
+        "insertOne": {
+            "document": {
+                "title": doc_dict['title'],
+                "body": doc_dict['body'],
+                "tags": doc_dict['tags'],
+                "embedding": "[384-dimensional vector]",
+                "source": doc_dict.get('source', 'manual')
+            }
+        }
+    }
+    
     result = documents.insert_one(doc_dict)
+    execution_time = (time.time() - start_time) * 1000
+    
+    mongodb_op = MongoDBOperation(
+        operation="insertOne",
+        query=insert_query,
+        result={
+            "inserted_id": str(result.inserted_id),
+            "acknowledged": result.acknowledged
+        },
+        execution_time_ms=round(execution_time, 2),
+        documents_affected=1
+    )
+    
     return DocumentResponse(
         id=str(result.inserted_id),
-        **document.dict()
+        **document.dict(),
+        mongodb_operation=mongodb_op
     )
 
 @app.post("/speech-to-text")
@@ -199,13 +293,43 @@ async def create_document_from_audio(
         doc_dict['embedding'] = embedding
         
         # Insert into MongoDB
+        import time
+        start_time = time.time()
+        
+        insert_query = {
+            "insertOne": {
+                "document": {
+                    "title": doc_dict['title'],
+                    "body": f"{doc_dict['body'][:100]}...",
+                    "tags": doc_dict['tags'],
+                    "embedding": "[384-dimensional vector]",
+                    "source": "audio",
+                    "audio_filename": audio.filename,
+                    "detected_language": detected_language
+                }
+            }
+        }
+        
         result = documents.insert_one(doc_dict)
+        execution_time = (time.time() - start_time) * 1000
+        
+        mongodb_op = MongoDBOperation(
+            operation="insertOne",
+            query=insert_query,
+            result={
+                "inserted_id": str(result.inserted_id),
+                "acknowledged": result.acknowledged
+            },
+            execution_time_ms=round(execution_time, 2),
+            documents_affected=1
+        )
         
         return DocumentResponse(
             id=str(result.inserted_id),
             title=doc_dict['title'],
             body=doc_dict['body'],
-            tags=doc_dict['tags']
+            tags=doc_dict['tags'],
+            mongodb_operation=mongodb_op
         )
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Audio document creation failed: {str(e)}")
@@ -306,6 +430,16 @@ async def semantic_search(q: str, limit: int = 10):
         
         results = list(documents.aggregate(actual_pipeline))
         
+        # Vector index information
+        vector_index_info = {
+            "name": "vector_index",
+            "type": "vectorSearch",
+            "field": "embedding",
+            "dimensions": 384,
+            "similarity": "cosine",
+            "model": "all-MiniLM-L6-v2"
+        }
+        
         top_results = []
         for doc in results:
             top_results.append(DocumentResponse(
@@ -317,13 +451,24 @@ async def semantic_search(q: str, limit: int = 10):
         
         execution_time = (time.time() - start_time) * 1000
         
+        mongodb_op = MongoDBOperation(
+            operation="aggregate",
+            query={"aggregate": pipeline},
+            result={"count": len(top_results)},
+            execution_time_ms=round(execution_time, 2),
+            documents_affected=len(top_results),
+            index_used=vector_index_info
+        )
+        
         return SearchResponse(
             query=q, 
             results=top_results, 
             total=len(top_results),
             mongodb_query={"aggregate": pipeline},
             execution_time_ms=round(execution_time, 2),
-            search_type="vector"
+            search_type="vector",
+            index_used=vector_index_info,
+            mongodb_operation=mongodb_op
         )
         
     except Exception as e:
@@ -354,7 +499,8 @@ async def semantic_search(q: str, limit: int = 10):
                 total=0,
                 mongodb_query=fallback_query,
                 execution_time_ms=round(execution_time, 2),
-                search_type="vector_fallback"
+                search_type="vector_fallback",
+                index_used={"note": "No vector index available, using Python similarity"}
             )
         
         # Calculate cosine similarity manually as fallback
@@ -381,19 +527,58 @@ async def semantic_search(q: str, limit: int = 10):
         
         execution_time = (time.time() - start_time) * 1000
         
+        mongodb_op = MongoDBOperation(
+            operation="find + Python similarity",
+            query=fallback_query,
+            result={"count": len(top_results)},
+            execution_time_ms=round(execution_time, 2),
+            documents_affected=len(top_results),
+            index_used={"note": "No vector index available, using Python similarity"}
+        )
+        
         return SearchResponse(
             query=q, 
             results=top_results, 
             total=len(top_results),
             mongodb_query=fallback_query,
             execution_time_ms=round(execution_time, 2),
-            search_type="vector_fallback"
+            search_type="vector_fallback",
+            index_used={"note": "No vector index available, using Python similarity"},
+            mongodb_operation=mongodb_op
         )
 
 @app.get("/documents", response_model=List[DocumentResponse])
 async def get_documents():
+    import time
+    start_time = time.time()
+    
+    find_query = {"find": {}}
     docs = list(documents.find())
-    return [DocumentResponse(id=str(doc["_id"]), **{k: v for k, v in doc.items() if k != "_id"}) for doc in docs]
+    execution_time = (time.time() - start_time) * 1000
+    
+    mongodb_op = MongoDBOperation(
+        operation="find",
+        query=find_query,
+        result={"count": len(docs)},
+        execution_time_ms=round(execution_time, 2),
+        documents_affected=len(docs)
+    )
+    
+    result_docs = []
+    for idx, doc in enumerate(docs):
+        # Only include fields that are in DocumentResponse model
+        doc_response = DocumentResponse(
+            id=str(doc["_id"]),
+            title=doc.get("title", ""),
+            body=doc.get("body", ""),
+            tags=doc.get("tags", [])
+        )
+        # Only add MongoDB operation to first document to avoid duplication
+        if idx == 0:
+            doc_response.mongodb_operation = mongodb_op
+        result_docs.append(doc_response)
+    
+    return result_docs
 
 @app.get("/search", response_model=SearchResponse)
 async def search_documents(q: str):
@@ -403,37 +588,124 @@ async def search_documents(q: str):
     import time
     start_time = time.time()
     
-    # MongoDB text search query
-    mongodb_query = {
-        "find": {"$text": {"$search": q}},
-        "projection": {"score": {"$meta": "textScore"}},
-        "sort": [("score", {"$meta": "textScore"})]
+    # MongoDB Search aggregation pipeline (uses $search with mongot)
+    pipeline = [
+        {
+            "$search": {
+                "index": "default",  # Using the default search index
+                "text": {
+                    "query": q,
+                    "path": ["title", "body", "tags"]
+                }
+            }
+        },
+        {
+            "$project": {
+                "_id": 1,
+                "title": 1,
+                "body": 1,
+                "tags": 1,
+                "score": {"$meta": "searchScore"}
+            }
+        },
+        {
+            "$limit": 10
+        }
+    ]
+    
+    # Get index information
+    index_info = {
+        "name": "text_search_index",
+        "type": "search",
+        "operator": "$search",
+        "fields": ["title", "body", "tags"],
+        "analyzer": "lucene.standard"
     }
     
-    cursor = documents.find(
-        {"$text": {"$search": q}},
-        {"score": {"$meta": "textScore"}}
-    ).sort([("score", {"$meta": "textScore"})])
-    
-    results = []
-    for doc in cursor:
-        results.append(DocumentResponse(
-            id=str(doc["_id"]),
-            title=doc["title"],
-            body=doc["body"],
-            tags=doc["tags"]
-        ))
-    
-    execution_time = (time.time() - start_time) * 1000  # Convert to ms
-    
-    return SearchResponse(
-        query=q, 
-        results=results, 
-        total=len(results),
-        mongodb_query=mongodb_query,
-        execution_time_ms=round(execution_time, 2),
-        search_type="text"
-    )
+    try:
+        # Execute Atlas Search aggregation
+        results_cursor = documents.aggregate(pipeline)
+        results = []
+        for doc in results_cursor:
+            results.append(DocumentResponse(
+                id=str(doc["_id"]),
+                title=doc["title"],
+                body=doc["body"],
+                tags=doc["tags"]
+            ))
+        
+        execution_time = (time.time() - start_time) * 1000  # Convert to ms
+        
+        mongodb_op = MongoDBOperation(
+            operation="aggregate",
+            query={"aggregate": pipeline},
+            result={"count": len(results)},
+            execution_time_ms=round(execution_time, 2),
+            documents_affected=len(results),
+            index_used=index_info
+        )
+        
+        return SearchResponse(
+            query=q, 
+            results=results, 
+            total=len(results),
+            mongodb_query={"aggregate": pipeline},
+            execution_time_ms=round(execution_time, 2),
+            search_type="full_text_search",
+            index_used=index_info,
+            mongodb_operation=mongodb_op
+        )
+    except Exception as e:
+        # Fallback to basic $text search if Atlas Search not available
+        print(f"⚠️  Atlas Search not available: {e}")
+        print("   Falling back to basic $text search...")
+        
+        fallback_query = {
+            "find": {"$text": {"$search": q}},
+            "note": "Fallback to basic text search (Atlas Search not enabled)"
+        }
+        
+        fallback_index = {
+            "name": "title_text_body_text_tags_text",
+            "type": "text",
+            "note": "Basic text index (not Atlas Search)"
+        }
+        
+        cursor = documents.find(
+            {"$text": {"$search": q}},
+            {"score": {"$meta": "textScore"}}
+        ).sort([("score", {"$meta": "textScore"})])
+        
+        results = []
+        for doc in cursor:
+            results.append(DocumentResponse(
+                id=str(doc["_id"]),
+                title=doc["title"],
+                body=doc["body"],
+                tags=doc["tags"]
+            ))
+        
+        execution_time = (time.time() - start_time) * 1000
+        
+        mongodb_op = MongoDBOperation(
+            operation="find",
+            query=fallback_query,
+            result={"count": len(results)},
+            execution_time_ms=round(execution_time, 2),
+            documents_affected=len(results),
+            index_used=fallback_index
+        )
+        
+        return SearchResponse(
+            query=q, 
+            results=results, 
+            total=len(results),
+            mongodb_query=fallback_query,
+            execution_time_ms=round(execution_time, 2),
+            search_type="text_fallback",
+            index_used=fallback_index,
+            mongodb_operation=mongodb_op
+        )
 
 # Helper function to call LLM
 def call_llm(prompt: str, context: str) -> str:
@@ -500,15 +772,28 @@ async def chat_with_documents(chat_request: ChatRequest):
         raise HTTPException(status_code=400, detail="Question is required")
     
     # Step 1: Retrieve relevant documents using semantic search
+    import time
+    start_time = time.time()
+    
     query_embedding = embedding_model.encode(question).tolist()
+    find_query = {"find": {"embedding": {"$exists": True}}}
     all_docs = list(documents.find({"embedding": {"$exists": True}}))
     
     if not all_docs:
+        execution_time = (time.time() - start_time) * 1000
+        mongodb_op = MongoDBOperation(
+            operation="find",
+            query=find_query,
+            result={"count": 0},
+            execution_time_ms=round(execution_time, 2),
+            documents_affected=0
+        )
         return ChatResponse(
             question=question,
             answer="I don't have any documents to answer your question. Please upload some documents first.",
             sources=[],
-            model_used=f"{LLM_PROVIDER}: {OLLAMA_MODEL if LLM_PROVIDER == 'ollama' else 'gpt-3.5-turbo'}"
+            model_used=f"{LLM_PROVIDER}: {OLLAMA_MODEL if LLM_PROVIDER == 'ollama' else 'gpt-3.5-turbo'}",
+            mongodb_operation=mongodb_op
         )
     
     # Calculate similarities
@@ -523,6 +808,8 @@ async def chat_with_documents(chat_request: ChatRequest):
     # Sort and get top documents
     results_with_scores.sort(key=lambda x: x[1], reverse=True)
     top_docs = results_with_scores[:max_docs]
+    
+    execution_time = (time.time() - start_time) * 1000
     
     # Step 2: Build context from retrieved documents
     context_parts = []
@@ -544,11 +831,27 @@ async def chat_with_documents(chat_request: ChatRequest):
     # Step 4: Return response
     model_name = f"{LLM_PROVIDER}: {OLLAMA_MODEL if LLM_PROVIDER == 'ollama' else 'gpt-3.5-turbo'}"
     
+    mongodb_op = MongoDBOperation(
+        operation="find + Python similarity",
+        query={
+            "find": {"embedding": {"$exists": True}},
+            "note": "Semantic search using Python cosine similarity for RAG"
+        },
+        result={
+            "total_documents": len(all_docs),
+            "retrieved_documents": len(top_docs),
+            "similarity_scores": [round(score, 4) for _, score in top_docs]
+        },
+        execution_time_ms=round(execution_time, 2),
+        documents_affected=len(top_docs)
+    )
+    
     return ChatResponse(
         question=question,
         answer=answer,
         sources=sources,
-        model_used=model_name
+        model_used=model_name,
+        mongodb_operation=mongodb_op
     )
 
 if __name__ == "__main__":

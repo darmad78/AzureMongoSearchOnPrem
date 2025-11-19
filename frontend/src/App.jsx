@@ -22,6 +22,13 @@ function App() {
   const [chatQuestion, setChatQuestion] = useState('');
   const [chatHistory, setChatHistory] = useState([]);
   const [isAsking, setIsAsking] = useState(false);
+  // MongoDB operation details for each operation type
+  const [mongodbOps, setMongodbOps] = useState({
+    createDocument: null,
+    uploadAudio: null,
+    chat: null,
+    fetchDocuments: null
+  });
   const mediaRecorderRef = useRef(null);
   const audioChunksRef = useRef([]);
   const chatEndRef = useRef(null);
@@ -41,12 +48,100 @@ function App() {
     }));
   };
 
+  // MongoDB Operation Details Component
+  const MongoDBOperationDetails = ({ operation, title }) => {
+    if (!operation) return null;
+    
+    return (
+      <div className="mongodb-operation-box" style={{
+        marginTop: '15px',
+        padding: '15px',
+        backgroundColor: '#f8f9fa',
+        border: '1px solid #dee2e6',
+        borderRadius: '8px',
+        fontSize: '0.9em'
+      }}>
+        <h4 style={{ marginTop: 0, marginBottom: '10px', color: '#495057' }}>
+          🗄️ MongoDB Operation: {title}
+        </h4>
+        <div style={{ marginBottom: '10px' }}>
+          <strong>Operation:</strong> <span style={{ 
+            backgroundColor: '#007bff', 
+            color: 'white', 
+            padding: '2px 8px', 
+            borderRadius: '4px',
+            fontSize: '0.85em'
+          }}>{operation.operation}</span>
+        </div>
+        {operation.execution_time_ms && (
+          <div style={{ marginBottom: '10px' }}>
+            <strong>Execution Time:</strong> {operation.execution_time_ms}ms
+          </div>
+        )}
+        {operation.documents_affected !== null && operation.documents_affected !== undefined && (
+          <div style={{ marginBottom: '10px' }}>
+            <strong>Documents Affected:</strong> {operation.documents_affected}
+          </div>
+        )}
+        {operation.query && (
+          <div style={{ marginBottom: '10px' }}>
+            <strong>Query:</strong>
+            <pre style={{ 
+              backgroundColor: '#fff', 
+              padding: '10px', 
+              borderRadius: '4px',
+              overflow: 'auto',
+              fontSize: '0.85em',
+              marginTop: '5px'
+            }}>
+              {JSON.stringify(operation.query, null, 2)}
+            </pre>
+          </div>
+        )}
+        {operation.result && (
+          <div style={{ marginBottom: '10px' }}>
+            <strong>Result:</strong>
+            <pre style={{ 
+              backgroundColor: '#fff', 
+              padding: '10px', 
+              borderRadius: '4px',
+              overflow: 'auto',
+              fontSize: '0.85em',
+              marginTop: '5px'
+            }}>
+              {JSON.stringify(operation.result, null, 2)}
+            </pre>
+          </div>
+        )}
+        {operation.index_used && (
+          <div style={{ marginBottom: '10px' }}>
+            <strong>Index Used:</strong>
+            <pre style={{ 
+              backgroundColor: '#e7f3ff', 
+              padding: '10px', 
+              borderRadius: '4px',
+              overflow: 'auto',
+              fontSize: '0.85em',
+              marginTop: '5px'
+            }}>
+              {JSON.stringify(operation.index_used, null, 2)}
+            </pre>
+          </div>
+        )}
+      </div>
+    );
+  };
+
   // Fetch all documents
   const fetchDocuments = async () => {
     try {
       const response = await fetch(`${API_URL}/documents`);
       const data = await response.json();
       setDocuments(data);
+      // Capture MongoDB operation from first document (if available)
+      if (data.length > 0 && data[0].mongodb_operation) {
+        setMongodbOps(prev => ({ ...prev, fetchDocuments: data[0].mongodb_operation }));
+      }
     } catch (error) {
       console.error('Error fetching documents:', error);
     }
@@ -122,13 +217,15 @@ function App() {
       const data = await response.json();
       setSearchResults(data.results);
       
-      // Store query details for display
+      // Store query details for display (including MongoDB operation)
       setQueryDetails({
         query: data.query,
         mongodb_query: data.mongodb_query,
         execution_time_ms: data.execution_time_ms,
         search_type: data.search_type,
         total: data.total,
+        index_used: data.index_used,
+        mongodb_operation: data.mongodb_operation,
         timestamp: new Date().toISOString()
       });
     } catch (error) {
@@ -156,6 +253,11 @@ function App() {
       });
       
       if (response.ok) {
+        const result = await response.json();
+        // Capture MongoDB operation details
+        if (result.mongodb_operation) {
+          setMongodbOps(prev => ({ ...prev, createDocument: result.mongodb_operation }));
+        }
         setNewDoc({ title: '', body: '', tags: '' });
         fetchDocuments(); // Refresh the list
       }
@@ -205,6 +307,11 @@ function App() {
       if (response.ok) {
         const result = await response.json();
         setUploadStatus(`✅ Successfully created document: "${result.title}"`);
+        
+        // Capture MongoDB operation details
+        if (result.mongodb_operation) {
+          setMongodbOps(prev => ({ ...prev, uploadAudio: result.mongodb_operation }));
+        }
         
         // Reset form
         setAudioFile(null);
@@ -257,6 +364,11 @@ function App() {
 
       if (response.ok) {
         const data = await response.json();
+        
+        // Capture MongoDB operation details
+        if (data.mongodb_operation) {
+          setMongodbOps(prev => ({ ...prev, chat: data.mongodb_operation }));
+        }
         
         // Add AI response to chat history
         const aiMessage = {
@@ -387,6 +499,12 @@ function App() {
               {uploadStatus}
             </div>
           )}
+          {mongodbOps.uploadAudio && (
+            <MongoDBOperationDetails 
+              operation={mongodbOps.uploadAudio} 
+              title="Upload Audio Document"
+            />
+          )}
         </section>
 
         {/* Add Text Document Section - Collapsible */}
@@ -427,6 +545,12 @@ function App() {
                 </div>
                 <button type="submit">Submit Document</button>
               </form>
+              {mongodbOps.createDocument && (
+                <MongoDBOperationDetails 
+                  operation={mongodbOps.createDocument} 
+                  title="Create Document"
+                />
+              )}
             </div>
           )}
         </section>
@@ -569,6 +693,12 @@ function App() {
               </button>
             </form>
           </div>
+          {mongodbOps.chat && (
+            <MongoDBOperationDetails 
+              operation={mongodbOps.chat} 
+              title="RAG Document Retrieval"
+            />
+          )}
           </div>
           )}
         </section>
@@ -612,6 +742,12 @@ function App() {
               ))}
             </div>
           )}
+          {mongodbOps.fetchDocuments && (
+            <MongoDBOperationDetails 
+              operation={mongodbOps.fetchDocuments} 
+              title="Fetch All Documents"
+            />
+          )}
           </div>
           )}
         </section>
@@ -645,9 +781,35 @@ function App() {
             <div className="detail-section">
               <h4>MongoDB Query</h4>
               <pre className="code-block">
-                {JSON.stringify(queryDetails.mongodb_query, null, 2)}
+                {JSON.stringify(queryDetails.mongodb_query || queryDetails.mongodb_operation?.query, null, 2)}
               </pre>
             </div>
+
+            {queryDetails.mongodb_operation && (
+              <div className="detail-section">
+                <h4>🗄️ MongoDB Operation Details</h4>
+                <div style={{ marginBottom: '10px' }}>
+                  <strong>Operation:</strong> {queryDetails.mongodb_operation.operation}
+                </div>
+                {queryDetails.mongodb_operation.result && (
+                  <div style={{ marginBottom: '10px' }}>
+                    <strong>Result:</strong>
+                    <pre className="code-block">
+                      {JSON.stringify(queryDetails.mongodb_operation.result, null, 2)}
+                    </pre>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {queryDetails.index_used && (
+              <div className="detail-section">
+                <h4>📊 Index Used</h4>
+                <pre className="code-block">
+                  {JSON.stringify(queryDetails.index_used, null, 2)}
+                </pre>
+              </div>
+            )}
 
             <div className="detail-section">
               <h4>Timestamp</h4>
