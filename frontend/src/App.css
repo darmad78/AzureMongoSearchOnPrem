@@ -754,6 +754,7 @@ body {
   border-radius: var(--radius-lg);
   animation: slideIn var(--transition-base);
   transition: all var(--transition-base);
+  margin-bottom: var(--spacing-md);
 }
 
 .chat-message:hover {
@@ -790,6 +791,9 @@ body {
 
 .message-content {
   flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-md);
 }
 
 .message-text {
@@ -1111,5 +1115,14 @@ body {
   font-weight: var(--font-weight-medium);
   text-transform: uppercase;
   letter-spacing: 0.5px;
+}
+
+/* MongoDB Operation Details Box - Prevents overlap */
+.mongodb-operation-box {
+  margin-top: var(--spacing-lg) !important;
+  margin-bottom: var(--spacing-md) !important;
+  clear: both;
+  position: relative;
+  z-index: 1;
 }
 

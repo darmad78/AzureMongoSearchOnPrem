@@ -932,7 +932,7 @@ Answer:""",
             detail="No LLM configured. Set OPENAI_API_KEY or ensure Ollama is running."
         )
 
-@app.post("/chat", response_model=ChatResponse)
+@app.post("/chat", response_model=ChatResponse, response_model_exclude_none=False)
 async def chat_with_documents(chat_request: ChatRequest):
     """RAG endpoint: Ask questions about your documents"""
     question = chat_request.question
