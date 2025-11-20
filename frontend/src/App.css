@@ -134,7 +134,8 @@
   border: 1px solid var(--gray-300);
   transition: all var(--transition-base);
   position: relative;
-  overflow: hidden;
+  overflow: visible;
+  margin-bottom: var(--spacing-xl);
 }
 
 .form-section::before, .search-section::before, .results-section::before {
@@ -213,6 +214,8 @@
 .audio-upload-section {
   background: linear-gradient(135deg, #667eea15 0%, #764ba215 100%);
   border: 2px solid #667eea;
+  position: relative;
+  z-index: 1;
 }
 
 .audio-upload-section h2 {
@@ -681,6 +684,8 @@ body {
 .chat-section {
   background: linear-gradient(135deg, #e0f7fa 0%, #b2ebf2 100%);
   border-left: 4px solid #00acc1;
+  position: relative;
+  z-index: 1;
 }
 
 .chat-container {
@@ -938,10 +943,13 @@ body {
 /* MongoDB Query Result Component - Professional Styling */
 .mongodb-query-result {
   margin-top: var(--spacing-xl);
+  margin-bottom: var(--spacing-xl);
   border: 1px solid var(--gray-300);
   border-radius: var(--radius-lg);
   overflow: hidden;
   box-shadow: var(--shadow-md);
+  position: relative;
+  z-index: 1;
   background: var(--bg-primary);
   transition: all var(--transition-base);
 }

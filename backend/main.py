@@ -941,50 +941,125 @@ async def chat_with_documents(chat_request: ChatRequest):
     if not question.strip():
         raise HTTPException(status_code=400, detail="Question is required")
     
-    # Step 1: Retrieve relevant documents using semantic search
+    # Step 1: Retrieve relevant documents using MongoDB vector search
     import time
     start_time = time.time()
     
+    # Generate embedding for query
     query_embedding = embedding_model.encode(question).tolist()
-    find_query = {"find": {"embedding": {"$exists": True}}}
-    all_docs = list(documents.find({"embedding": {"$exists": True}}))
     
-    if not all_docs:
+    # Try MongoDB native $vectorSearch first
+    try:
+        # Vector search aggregation pipeline
+        pipeline = [
+            {
+                "$vectorSearch": {
+                    "index": "vector_index",
+                    "path": "embedding",
+                    "queryVector": "[VECTOR_EMBEDDING]",  # Placeholder for display
+                    "numCandidates": max_docs * 10,
+                    "limit": max_docs
+                }
+            },
+            {
+                "$project": {
+                    "_id": 1,
+                    "title": 1,
+                    "body": 1,
+                    "tags": 1,
+                    "score": { "$meta": "vectorSearchScore" }
+                }
+            }
+        ]
+        
+        # Execute with actual embedding
+        actual_pipeline = [
+            {
+                "$vectorSearch": {
+                    "index": "vector_index",
+                    "path": "embedding",
+                    "queryVector": query_embedding,
+                    "numCandidates": max_docs * 10,
+                    "limit": max_docs
+                }
+            },
+            {
+                "$project": {
+                    "_id": 1,
+                    "title": 1,
+                    "body": 1,
+                    "tags": 1,
+                    "score": { "$meta": "vectorSearchScore" }
+                }
+            }
+        ]
+        
+        results_cursor = documents.aggregate(actual_pipeline)
+        top_docs_with_scores = []
+        for doc in results_cursor:
+            top_docs_with_scores.append((doc, doc.get("score", 0.0)))
+        
         execution_time = (time.time() - start_time) * 1000
-        mongodb_op = MongoDBOperation(
-            operation="find",
-            query=find_query,
-            result={"count": 0},
-            execution_time_ms=round(execution_time, 2),
-            documents_affected=0
-        )
-        return ChatResponse(
-            question=question,
-            answer="I don't have any documents to answer your question. Please upload some documents first.",
-            sources=[],
-            model_used=f"{LLM_PROVIDER}: {OLLAMA_MODEL if LLM_PROVIDER == 'ollama' else 'gpt-3.5-turbo'}",
-            mongodb_operation=mongodb_op
-        )
-    
-    # Calculate similarities
-    results_with_scores = []
-    for doc in all_docs:
-        if "embedding" in doc:
-            similarity = np.dot(query_embedding, doc["embedding"]) / (
-                np.linalg.norm(query_embedding) * np.linalg.norm(doc["embedding"])
+        query_info = {
+            "aggregate": pipeline,
+            "note": "MongoDB native $vectorSearch for RAG"
+        }
+        search_type = "vector_search"
+        
+    except Exception as e:
+        # Fallback to Python similarity search
+        error_msg = str(e)
+        if "SearchNotEnabled" in error_msg or "31082" in error_msg or "$vectorSearch" in error_msg:
+            print("⚠️  Native $vectorSearch not available for RAG. Using Python similarity fallback...")
+        else:
+            print(f"Vector search error in RAG: {e}. Using Python similarity fallback.")
+        
+        # Get all documents with embeddings
+        find_query = {"find": {"embedding": {"$exists": True}}}
+        all_docs = list(documents.find({"embedding": {"$exists": True}}))
+        
+        if not all_docs:
+            execution_time = (time.time() - start_time) * 1000
+            mongodb_op = MongoDBOperation(
+                operation="find",
+                query=find_query,
+                result={"count": 0},
+                execution_time_ms=round(execution_time, 2),
+                documents_affected=0
             )
-            results_with_scores.append((doc, similarity))
-    
-    # Sort and get top documents
-    results_with_scores.sort(key=lambda x: x[1], reverse=True)
-    top_docs = results_with_scores[:max_docs]
-    
-    execution_time = (time.time() - start_time) * 1000
+            return ChatResponse(
+                question=question,
+                answer="I don't have any documents to answer your question. Please upload some documents first.",
+                sources=[],
+                model_used=f"{LLM_PROVIDER}: {OLLAMA_MODEL if LLM_PROVIDER == 'ollama' else 'gpt-3.5-turbo'}",
+                mongodb_operation=mongodb_op
+            )
+        
+        # Calculate similarities in Python
+        results_with_scores = []
+        for doc in all_docs:
+            if "embedding" in doc:
+                similarity = np.dot(query_embedding, doc["embedding"]) / (
+                    np.linalg.norm(query_embedding) * np.linalg.norm(doc["embedding"])
+                )
+                results_with_scores.append((doc, similarity))
+        
+        # Sort and get top documents
+        results_with_scores.sort(key=lambda x: x[1], reverse=True)
+        top_docs_with_scores = results_with_scores[:max_docs]
+        
+        execution_time = (time.time() - start_time) * 1000
+        query_info = {
+            "find": {"embedding": {"$exists": True}},
+            "note": "Python cosine similarity (fallback - $vectorSearch not available)"
+        }
+        search_type = "python_similarity"
     
     # Step 2: Build context from retrieved documents
+    top_docs = [doc for doc, score in top_docs_with_scores]
     context_parts = []
     sources = []
-    for idx, (doc, score) in enumerate(top_docs, 1):
+    for idx, (doc, score) in enumerate(top_docs_with_scores, 1):
         context_parts.append(f"Document {idx} (Title: {doc['title']}):\n{doc['body']}\n")
         sources.append(DocumentResponse(
             id=str(doc["_id"]),
@@ -998,22 +1073,38 @@ async def chat_with_documents(chat_request: ChatRequest):
     # Step 3: Generate answer using LLM
     answer = call_llm(question, context)
     
-    # Step 4: Return response
+    # Step 4: Prepare MongoDB operation details
     model_name = f"{LLM_PROVIDER}: {OLLAMA_MODEL if LLM_PROVIDER == 'ollama' else 'gpt-3.5-turbo'}"
     
+    # Prepare result data
+    result_data = {
+        "count": len(top_docs),
+        "retrieved_documents": len(top_docs)
+    }
+    
+    # Add scores/similarity information
+    if search_type == "vector_search":
+        result_data["scores"] = [round(score, 4) for _, score in top_docs_with_scores]
+        index_used = {
+            "name": "vector_index",
+            "type": "vectorSearch",
+            "field": "embedding",
+            "dimensions": 384,
+            "similarity": "cosine"
+        }
+    else:
+        result_data["similarity_scores"] = [round(score, 4) for _, score in top_docs_with_scores]
+        if 'all_docs' in locals():
+            result_data["total_documents"] = len(all_docs)
+        index_used = None
+    
     mongodb_op = MongoDBOperation(
-        operation="find + Python similarity",
-        query={
-            "find": {"embedding": {"$exists": True}},
-            "note": "Semantic search using Python cosine similarity for RAG"
-        },
-        result={
-            "total_documents": len(all_docs),
-            "retrieved_documents": len(top_docs),
-            "similarity_scores": [round(score, 4) for _, score in top_docs]
-        },
+        operation="aggregate" if search_type == "vector_search" else "find + Python similarity",
+        query=query_info,
+        result=result_data,
         execution_time_ms=round(execution_time, 2),
-        documents_affected=len(top_docs)
+        documents_affected=len(top_docs),
+        index_used=index_used
     )
     
     return ChatResponse(

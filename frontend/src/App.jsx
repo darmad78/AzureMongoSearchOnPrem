@@ -107,15 +107,101 @@ function App() {
         )}
         {(!collapsible || isExpanded) && (
           <div className="mongodb-content">
-            {/* Query Block */}
-            {operation.query && (
-              <div className="mongodb-block mongodb-block-query">
+            {/* Query and Response side by side (when no workflow steps) */}
+            {operation.result && !operation.result.workflow_steps && (
+              <div style={{ 
+                display: 'grid', 
+                gridTemplateColumns: '1fr 1fr', 
+                gap: '15px',
+                marginBottom: '15px'
+              }}>
+                {/* Query Block */}
+                {operation.query && (
+                  <div className="mongodb-block mongodb-block-query">
+                    <div className="mongodb-block-header">
+                      <span className="mongodb-block-icon">📤</span>
+                      <h4 className="mongodb-block-title">Query Request</h4>
+                    </div>
+                    <div className="mongodb-block-content">
+                      <pre className="mongodb-code" style={{
+                        backgroundColor: '#f8f9fa',
+                        padding: '12px',
+                        borderRadius: '6px',
+                        overflow: 'auto',
+                        fontSize: '0.85em',
+                        fontFamily: 'Monaco, "Courier New", monospace',
+                        lineHeight: '1.5',
+                        maxHeight: '400px',
+                        border: '1px solid #dee2e6'
+                      }}>
+                        {JSON.stringify(operation.query, null, 2)}
+                      </pre>
+                    </div>
+                  </div>
+                )}
+                
+                {/* Result Block */}
+                {operation.result && (
+                  <div className="mongodb-block mongodb-block-response">
+                    <div className="mongodb-block-header">
+                      <span className="mongodb-block-icon">📥</span>
+                      <h4 className="mongodb-block-title">Query Response</h4>
+                    </div>
+                    <div className="mongodb-block-content">
+                      <pre className="mongodb-code" style={{
+                        backgroundColor: '#f8f9fa',
+                        padding: '12px',
+                        borderRadius: '6px',
+                        overflow: 'auto',
+                        fontSize: '0.85em',
+                        fontFamily: 'Monaco, "Courier New", monospace',
+                        lineHeight: '1.5',
+                        maxHeight: '400px',
+                        border: '1px solid #dee2e6'
+                      }}>
+                        {JSON.stringify(operation.result, null, 2)}
+                      </pre>
+                      {operation.result.retrieved_documents !== undefined && (
+                        <div className="mongodb-summary" style={{
+                          marginTop: '10px',
+                          padding: '8px',
+                          backgroundColor: '#e7f3ff',
+                          borderRadius: '4px',
+                          fontSize: '0.9em'
+                        }}>
+                          <strong>📊 Summary:</strong> Retrieved <strong>{operation.result.retrieved_documents}</strong> of <strong>{operation.result.total_documents || 'N/A'}</strong> documents
+                          {operation.result.similarity_scores && operation.result.similarity_scores.length > 0 && (
+                            <div style={{ marginTop: '6px' }}>
+                              Similarity: {operation.result.similarity_scores.map(s => s.toFixed(4)).join(', ')}
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+            
+            {/* Query Block (when workflow steps exist, show query separately) */}
+            {operation.query && operation.result && operation.result.workflow_steps && (
+              <div className="mongodb-block mongodb-block-query" style={{ marginBottom: '15px' }}>
                 <div className="mongodb-block-header">
                   <span className="mongodb-block-icon">📤</span>
                   <h4 className="mongodb-block-title">Query Request</h4>
                 </div>
                 <div className="mongodb-block-content">
-                  <pre className="mongodb-code">
+                  <pre className="mongodb-code" style={{
+                    backgroundColor: '#f8f9fa',
+                    padding: '12px',
+                    borderRadius: '6px',
+                    overflow: 'auto',
+                    fontSize: '0.85em',
+                    fontFamily: 'Monaco, "Courier New", monospace',
+                    lineHeight: '1.5',
+                    maxHeight: '400px',
+                    border: '1px solid #dee2e6'
+                  }}>
                     {JSON.stringify(operation.query, null, 2)}
                   </pre>
                 </div>
@@ -208,30 +294,6 @@ function App() {
               </div>
             )}
             
-            {/* Result Block */}
-            {operation.result && !operation.result.workflow_steps && (
-              <div className="mongodb-block mongodb-block-response">
-                <div className="mongodb-block-header">
-                  <span className="mongodb-block-icon">📥</span>
-                  <h4 className="mongodb-block-title">Query Response</h4>
-                </div>
-                <div className="mongodb-block-content">
-                  <pre className="mongodb-code">
-                    {JSON.stringify(operation.result, null, 2)}
-                  </pre>
-                </div>
-                {operation.result.retrieved_documents !== undefined && (
-                  <div className="mongodb-summary">
-                    <strong>📊 Summary:</strong> Retrieved <strong>{operation.result.retrieved_documents}</strong> of <strong>{operation.result.total_documents || 'N/A'}</strong> documents
-                    {operation.result.similarity_scores && operation.result.similarity_scores.length > 0 && (
-                      <div style={{ marginTop: '6px' }}>
-                        Similarity: {operation.result.similarity_scores.map(s => s.toFixed(4)).join(', ')}
-                      </div>
-                    )}
-                  </div>
-                )}
-              </div>
-            )}
             
             {/* Index Used Block */}
             {operation.index_used && (
