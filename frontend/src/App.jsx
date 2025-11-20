@@ -18,13 +18,15 @@ const getApiUrl = () => {
   };
 };
 
-const { url: API_URL, buildTime: BUILD_TIME } = getApiUrl();
+const { url: API_URL } = getApiUrl();
 console.log('Frontend API_URL:', API_URL);
-console.log('Frontend BUILD_TIME:', BUILD_TIME);
 console.log('VITE_API_URL env:', import.meta.env.VITE_API_URL);
 console.log('Window location:', window.location.href);
 
 function App() {
+  // Get build time for display
+  const BUILD_TIME = import.meta.env.VITE_BUILD_TIME || 'Unknown Build Time';
+  
   const [documents, setDocuments] = useState([]);
   const [searchResults, setSearchResults] = useState([]);
   const [searchQuery, setSearchQuery] = useState('');
