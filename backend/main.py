@@ -877,7 +877,7 @@ Answer:""",
                         "num_predict": 500
                     }
                 },
-                timeout=60
+                timeout=int(os.getenv("OLLAMA_TIMEOUT", "180"))  # Default 3 minutes for LLM generation
             )
             
             # Handle non-200 status codes with better error messages

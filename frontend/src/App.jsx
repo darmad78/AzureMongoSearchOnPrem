@@ -51,7 +51,8 @@ function App() {
     createDocument: null,
     uploadAudio: null,
     chat: null,
-    fetchDocuments: null
+    fetchDocuments: null,
+    search: null
   });
   const mediaRecorderRef = useRef(null);
   const audioChunksRef = useRef([]);
@@ -578,6 +579,11 @@ function App() {
         mongodb_operation: data.mongodb_operation,
         timestamp: new Date().toISOString()
       });
+      
+      // Capture MongoDB operation details for sidebar
+      if (data.mongodb_operation) {
+        setMongodbOps(prev => ({ ...prev, search: data.mongodb_operation }));
+      }
     } catch (error) {
       console.error('Error searching documents:', error);
     } finally {
@@ -1559,7 +1565,7 @@ function App() {
       {/* MongoDB Query Details Sidebar */}
       <aside className="query-sidebar">
         <h3>🔍 MongoDB Query Details</h3>
-        {mongodbOps.uploadAudio || mongodbOps.createDocument || mongodbOps.chat || mongodbOps.fetchDocuments ? (
+        {mongodbOps.uploadAudio || mongodbOps.createDocument || mongodbOps.chat || mongodbOps.fetchDocuments || mongodbOps.search ? (
           <div>
             {mongodbOps.uploadAudio && (
               <MongoDBOperationDetails 
@@ -1577,6 +1583,12 @@ function App() {
               <MongoDBOperationDetails 
                 operation={mongodbOps.chat} 
                 title="RAG Chat"
+              />
+            )}
+            {mongodbOps.search && (
+              <MongoDBOperationDetails 
+                operation={mongodbOps.search} 
+                title="Search"
               />
             )}
             {mongodbOps.fetchDocuments && (

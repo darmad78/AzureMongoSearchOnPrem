@@ -387,9 +387,6 @@ spec:
         imagePullPolicy: IfNotPresent
         ports:
         - containerPort: ${FRONTEND_PORT}
-        env:
-        - name: VITE_API_URL
-          value: "${BACKEND_EXTERNAL_URL}"
         readinessProbe:
           httpGet:
             path: /
