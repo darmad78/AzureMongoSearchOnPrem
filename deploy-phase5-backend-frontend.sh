@@ -356,8 +356,8 @@ log_step "Step 9: Deploying Frontend Application"
 
 # Get backend NodePort for external access
 BACKEND_NODE_PORT=$(kubectl get svc search-backend-svc -n ${NAMESPACE} -o jsonpath='{.spec.ports[0].nodePort}')
-# Use the correct external IP instead of VM_IP which might be internal
-EXTERNAL_IP="146.148.66.166"
+# Get external IP dynamically (frontend will construct API URL from current hostname at runtime)
+EXTERNAL_IP=$(curl -s ifconfig.me 2>/dev/null || curl -s icanhazip.com 2>/dev/null || echo "${VM_IP}")
 BACKEND_EXTERNAL_URL="http://${EXTERNAL_IP}:${BACKEND_NODE_PORT}"
 
 log_info "Backend external URL: ${BACKEND_EXTERNAL_URL}"
