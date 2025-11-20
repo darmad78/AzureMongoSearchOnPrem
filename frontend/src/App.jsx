@@ -1545,6 +1545,43 @@ function App() {
           )}
         </section>
       </main>
+      
+      {/* MongoDB Query Details Sidebar */}
+      <aside className="query-sidebar">
+        <h3>🔍 MongoDB Query Details</h3>
+        {mongodbOps.uploadAudio || mongodbOps.createDocument || mongodbOps.chat || mongodbOps.fetchDocuments ? (
+          <div>
+            {mongodbOps.uploadAudio && (
+              <MongoDBOperationDetails 
+                operation={mongodbOps.uploadAudio} 
+                title="Audio Upload"
+              />
+            )}
+            {mongodbOps.createDocument && (
+              <MongoDBOperationDetails 
+                operation={mongodbOps.createDocument} 
+                title="Create Document"
+              />
+            )}
+            {mongodbOps.chat && (
+              <MongoDBOperationDetails 
+                operation={mongodbOps.chat} 
+                title="RAG Chat"
+              />
+            )}
+            {mongodbOps.fetchDocuments && (
+              <MongoDBOperationDetails 
+                operation={mongodbOps.fetchDocuments} 
+                title="Fetch Documents"
+              />
+            )}
+          </div>
+        ) : (
+          <div className="no-query-message">
+            <p>🔎 Execute a search, upload a file, or create a document to see MongoDB query details</p>
+          </div>
+        )}
+      </aside>
       </div>
     </div>
   );
