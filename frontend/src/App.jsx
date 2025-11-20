@@ -52,6 +52,7 @@ function App() {
     uploadAudio: null,
     chat: null,
     fetchDocuments: null,
+    search: null,
     search: null
   });
   const mediaRecorderRef = useRef(null);
@@ -130,7 +131,7 @@ function App() {
                 </div>
                 <div className="mongodb-block-content">
                   {operation.result.workflow_steps.map((step, idx) => (
-                    <div key={idx} style={{
+                    <div key={`step-${step.step}-${idx}`} style={{
                       marginBottom: '15px',
                       padding: '12px',
                       backgroundColor: '#fff',
@@ -678,6 +679,7 @@ function App() {
         let steps = [];
         if (result.mongodb_operation && result.mongodb_operation.result && result.mongodb_operation.result.workflow_steps) {
           steps = result.mongodb_operation.result.workflow_steps;
+          console.log('Workflow steps received:', steps.length, steps);
         }
         
         setUploadSteps(steps);
@@ -998,79 +1000,82 @@ function App() {
                 📋 Processing Steps
               </h3>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                {uploadSteps.map((step, index) => (
-                  <div 
-                    key={step.step || index}
-                    style={{
-                      padding: '12px',
-                      backgroundColor: step.status === 'completed' ? '#d4edda' : 
-                                       step.status === 'in_progress' ? '#fff3cd' : '#f8f9fa',
-                      border: `1px solid ${step.status === 'completed' ? '#c3e6cb' : 
-                                              step.status === 'in_progress' ? '#ffeaa7' : '#dee2e6'}`,
-                      borderRadius: '6px',
-                      display: 'flex',
-                      alignItems: 'flex-start',
-                      gap: '12px'
-                    }}
-                  >
-                    <div style={{
-                      fontSize: '20px',
-                      minWidth: '30px'
-                    }}>
-                      {step.status === 'completed' ? '✅' : 
-                       step.status === 'in_progress' ? '⏳' : '⏸️'}
-                    </div>
-                    <div style={{ flex: 1 }}>
+                {uploadSteps.map((step, index) => {
+                  console.log('Rendering step:', step.step, step.name);
+                  return (
+                    <div 
+                      key={`upload-step-${step.step}-${index}`}
+                      style={{
+                        padding: '12px',
+                        backgroundColor: step.status === 'completed' ? '#d4edda' : 
+                                         step.status === 'in_progress' ? '#fff3cd' : '#f8f9fa',
+                        border: `1px solid ${step.status === 'completed' ? '#c3e6cb' : 
+                                                step.status === 'in_progress' ? '#ffeaa7' : '#dee2e6'}`,
+                        borderRadius: '6px',
+                        display: 'flex',
+                        alignItems: 'flex-start',
+                        gap: '12px'
+                      }}
+                    >
                       <div style={{
-                        fontWeight: 'bold',
-                        marginBottom: '5px',
-                        color: '#212529'
+                        fontSize: '20px',
+                        minWidth: '30px'
                       }}>
-                        Step {step.step}: {step.name}
+                        {step.status === 'completed' ? '✅' : 
+                         step.status === 'in_progress' ? '⏳' : '⏸️'}
                       </div>
-                      {step.details && (
-                        <div style={{ fontSize: '0.9em', color: '#6c757d' }}>
-                          {step.details.filename && (
-                            <div>📄 File: {step.details.filename}</div>
-                          )}
-                          {step.details.file_size_bytes && (
-                            <div>📦 Size: {(step.details.file_size_bytes / 1024).toFixed(2)} KB</div>
-                          )}
-                          {step.details.detected_language && (
-                            <div>🌐 Language: {step.details.detected_language}</div>
-                          )}
-                          {step.details.transcription_length && (
-                            <div>📝 Transcription: {step.details.transcription_length} characters</div>
-                          )}
-                          {step.details.transcription_preview && (
-                            <div style={{ 
-                              marginTop: '5px', 
-                              fontStyle: 'italic',
-                              color: '#495057'
-                            }}>
-                              Preview: "{step.details.transcription_preview}"
-                            </div>
-                          )}
-                          {step.details.embedding_dimensions && (
-                            <div>🧠 Embedding: {step.details.embedding_dimensions} dimensions ({step.details.model})</div>
-                          )}
-                          {step.details.inserted_id && (
-                            <div>💾 Document ID: {step.details.inserted_id}</div>
-                          )}
-                          {step.details.duration_ms && (
-                            <div style={{ 
-                              marginTop: '5px',
-                              fontWeight: 'bold',
-                              color: '#007bff'
-                            }}>
-                              ⏱️ Duration: {step.details.duration_ms}ms
-                            </div>
-                          )}
+                      <div style={{ flex: 1 }}>
+                        <div style={{
+                          fontWeight: 'bold',
+                          marginBottom: '5px',
+                          color: '#212529'
+                        }}>
+                          Step {step.step}: {step.name}
                         </div>
-                      )}
+                        {step.details && (
+                          <div style={{ fontSize: '0.9em', color: '#6c757d' }}>
+                            {step.details.filename && (
+                              <div>📄 File: {step.details.filename}</div>
+                            )}
+                            {step.details.file_size_bytes && (
+                              <div>📦 Size: {(step.details.file_size_bytes / 1024).toFixed(2)} KB</div>
+                            )}
+                            {step.details.detected_language && (
+                              <div>🌐 Language: {step.details.detected_language}</div>
+                            )}
+                            {step.details.transcription_length && (
+                              <div>📝 Transcription: {step.details.transcription_length} characters</div>
+                            )}
+                            {step.details.transcription_preview && (
+                              <div style={{ 
+                                marginTop: '5px', 
+                                fontStyle: 'italic',
+                                color: '#495057'
+                              }}>
+                                Preview: "{step.details.transcription_preview}"
+                              </div>
+                            )}
+                            {step.details.embedding_dimensions && (
+                              <div>🧠 Embedding: {step.details.embedding_dimensions} dimensions ({step.details.model})</div>
+                            )}
+                            {step.details.inserted_id && (
+                              <div>💾 Document ID: {step.details.inserted_id}</div>
+                            )}
+                            {step.details.duration_ms && (
+                              <div style={{ 
+                                marginTop: '5px',
+                                fontWeight: 'bold',
+                                color: '#007bff'
+                              }}>
+                                ⏱️ Duration: {step.details.duration_ms}ms
+                              </div>
+                            )}
+                          </div>
+                        )}
+                      </div>
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
                 {mongodbOps.uploadAudio && mongodbOps.uploadAudio.result && mongodbOps.uploadAudio.result.total_duration_ms && (
                   <div style={{
                     marginTop: '10px',
@@ -1149,9 +1154,9 @@ function App() {
                           <div className="message-model">Model: {message.model}</div>
                         )}
                         {message.mongodb_operation ? (
-                          <MongoDBOperationDetails 
+                          <MongoDBQueryResult 
                             operation={message.mongodb_operation} 
-                            title="RAG Search"
+                            collapsible={false}
                           />
                         ) : null}
                       </div>
@@ -1561,49 +1566,6 @@ function App() {
           )}
         </section>
       </main>
-      
-      {/* MongoDB Query Details Sidebar */}
-      <aside className="query-sidebar">
-        <h3>🔍 MongoDB Query Details</h3>
-        {mongodbOps.uploadAudio || mongodbOps.createDocument || mongodbOps.chat || mongodbOps.fetchDocuments || mongodbOps.search ? (
-          <div>
-            {mongodbOps.uploadAudio && (
-              <MongoDBOperationDetails 
-                operation={mongodbOps.uploadAudio} 
-                title="Audio Upload"
-              />
-            )}
-            {mongodbOps.createDocument && (
-              <MongoDBOperationDetails 
-                operation={mongodbOps.createDocument} 
-                title="Create Document"
-              />
-            )}
-            {mongodbOps.chat && (
-              <MongoDBOperationDetails 
-                operation={mongodbOps.chat} 
-                title="RAG Chat"
-              />
-            )}
-            {mongodbOps.search && (
-              <MongoDBOperationDetails 
-                operation={mongodbOps.search} 
-                title="Search"
-              />
-            )}
-            {mongodbOps.fetchDocuments && (
-              <MongoDBOperationDetails 
-                operation={mongodbOps.fetchDocuments} 
-                title="Fetch Documents"
-              />
-            )}
-          </div>
-        ) : (
-          <div className="no-query-message">
-            <p>🔎 Execute a search, upload a file, or create a document to see MongoDB query details</p>
-          </div>
-        )}
-      </aside>
       </div>
     </div>
   );
