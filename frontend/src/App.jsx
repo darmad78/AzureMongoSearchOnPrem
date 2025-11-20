@@ -46,6 +46,7 @@ function App() {
   const [chatQuestion, setChatQuestion] = useState('');
   const [chatHistory, setChatHistory] = useState([]);
   const [isAsking, setIsAsking] = useState(false);
+  const [customPrompt, setCustomPrompt] = useState('You are a helpful assistant. Answer the question based on the context provided.');
   // MongoDB operation details for each operation type
   const [mongodbOps, setMongodbOps] = useState({
     createDocument: null,
@@ -802,7 +803,8 @@ function App() {
         },
         body: JSON.stringify({
           question: userQuestion,
-          max_context_docs: 3
+          max_context_docs: 3,
+          system_prompt: customPrompt.trim() || undefined
         }),
       });
 
@@ -1176,7 +1178,13 @@ function App() {
             Use AI to ask questions and get answers based on your stored documents (RAG - Retrieval-Augmented Generation)
           </p>
           
-          <div className="chat-container">
+          <div style={{ 
+            display: 'grid', 
+            gridTemplateColumns: '2fr 1fr', 
+            gap: '20px',
+            marginBottom: '20px'
+          }}>
+            <div className="chat-container">
             <div className="chat-messages">
               {chatHistory.length === 0 ? (
                 <div className="chat-welcome">
@@ -1242,6 +1250,54 @@ function App() {
                 {isAsking ? '⏳' : '📤'} {isAsking ? 'Thinking...' : 'Ask'}
               </button>
             </form>
+          </div>
+          
+          {/* Custom Prompt Box */}
+          <div style={{
+            padding: '20px',
+            backgroundColor: '#f8f9fa',
+            border: '1px solid #dee2e6',
+            borderRadius: '8px',
+            height: 'fit-content'
+          }}>
+            <h3 style={{ marginTop: 0, marginBottom: '12px', fontSize: '1.1em', color: '#495057' }}>
+              ⚙️ Custom System Prompt
+            </h3>
+            <p style={{ fontSize: '0.85em', color: '#6c757d', marginBottom: '12px' }}>
+              Customize how the AI responds. Leave empty for default.
+            </p>
+            <textarea
+              value={customPrompt}
+              onChange={(e) => setCustomPrompt(e.target.value)}
+              placeholder="You are a helpful assistant. Answer the question based on the context provided."
+              style={{
+                width: '100%',
+                minHeight: '200px',
+                padding: '12px',
+                border: '1px solid #ced4da',
+                borderRadius: '6px',
+                fontSize: '0.9em',
+                fontFamily: 'inherit',
+                resize: 'vertical',
+                lineHeight: '1.5'
+              }}
+            />
+            <button
+              onClick={() => setCustomPrompt('You are a helpful assistant. Answer the question based on the context provided.')}
+              style={{
+                marginTop: '10px',
+                padding: '6px 12px',
+                backgroundColor: '#6c757d',
+                color: 'white',
+                border: 'none',
+                borderRadius: '4px',
+                cursor: 'pointer',
+                fontSize: '0.85em'
+              }}
+            >
+              Reset to Default
+            </button>
+          </div>
           </div>
           </div>
           )}

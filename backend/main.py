@@ -142,6 +142,7 @@ class SearchResponse(BaseModel):
 class ChatRequest(BaseModel):
     question: str
     max_context_docs: Optional[int] = 3
+    system_prompt: Optional[str] = None
 
 class ChatResponse(BaseModel):
     question: str
@@ -830,15 +831,18 @@ def check_ollama_model() -> Tuple[bool, str]:
         return False, f"Error checking Ollama: {str(e)}"
 
 # Helper function to call LLM
-def call_llm(prompt: str, context: str) -> str:
+def call_llm(prompt: str, context: str, system_prompt: Optional[str] = None) -> str:
     """Call LLM with prompt and context"""
+    # Default system prompt
+    default_system_prompt = "You are a helpful assistant that answers questions based on the provided context. If the answer is not in the context, say so."
+    system_instruction = system_prompt if system_prompt else default_system_prompt
     if LLM_PROVIDER == "openai" and openai_client:
         # OpenAI API call
         try:
             response = openai_client.chat.completions.create(
                 model="gpt-3.5-turbo",
                 messages=[
-                    {"role": "system", "content": "You are a helpful assistant that answers questions based on the provided context. If the answer is not in the context, say so."},
+                    {"role": "system", "content": system_instruction},
                     {"role": "user", "content": f"Context:\n{context}\n\nQuestion: {prompt}\n\nAnswer:"}
                 ],
                 temperature=0.7,
@@ -863,7 +867,7 @@ def call_llm(prompt: str, context: str) -> str:
                 f"{OLLAMA_URL}/api/generate",
                 json={
                     "model": OLLAMA_MODEL,
-                    "prompt": f"""You are a helpful assistant. Answer the question based on the context provided.
+                    "prompt": f"""{system_instruction}
 
 Context:
 {context}
@@ -1070,8 +1074,9 @@ async def chat_with_documents(chat_request: ChatRequest):
     
     context = "\n".join(context_parts)
     
-    # Step 3: Generate answer using LLM
-    answer = call_llm(question, context)
+    # Step 3: Generate answer using LLM with custom system prompt
+    system_prompt = chat_request.system_prompt if chat_request.system_prompt else None
+    answer = call_llm(question, context, system_prompt)
     
     # Step 4: Prepare MongoDB operation details
     model_name = f"{LLM_PROVIDER}: {OLLAMA_MODEL if LLM_PROVIDER == 'ollama' else 'gpt-3.5-turbo'}"
