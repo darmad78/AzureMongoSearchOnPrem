@@ -109,12 +109,13 @@ function App() {
         {(!collapsible || isExpanded) && (
           <div className="mongodb-content">
             {/* Query and Response side by side (when no workflow steps) */}
-            {operation.result && !operation.result.workflow_steps && (
+            {operation.query && operation.result && !operation.result.workflow_steps && (
               <div style={{ 
                 display: 'grid', 
                 gridTemplateColumns: '1fr 1fr', 
                 gap: '15px',
-                marginBottom: '15px'
+                marginBottom: '15px',
+                width: '100%'
               }}>
                 {/* Query Block */}
                 {operation.query && (
@@ -803,7 +804,7 @@ function App() {
         },
         body: JSON.stringify({
           question: userQuestion,
-          max_context_docs: 3,
+          max_context_docs: 10,  // Increased from 3 to 10 for better RAG context
           system_prompt: customPrompt.trim() || undefined
         }),
       });
@@ -1182,9 +1183,10 @@ function App() {
             display: 'grid', 
             gridTemplateColumns: '2fr 1fr', 
             gap: '20px',
-            marginBottom: '20px'
+            marginBottom: '20px',
+            alignItems: 'start'
           }}>
-            <div className="chat-container">
+            <div className="chat-container" style={{ width: '100%' }}>
             <div className="chat-messages">
               {chatHistory.length === 0 ? (
                 <div className="chat-welcome">

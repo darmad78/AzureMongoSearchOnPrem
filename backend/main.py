@@ -141,7 +141,7 @@ class SearchResponse(BaseModel):
 
 class ChatRequest(BaseModel):
     question: str
-    max_context_docs: Optional[int] = 3
+    max_context_docs: Optional[int] = 10  # Increased from 3 to 10 for better RAG context
     system_prompt: Optional[str] = None
 
 class ChatResponse(BaseModel):
@@ -186,19 +186,22 @@ async def create_document(document: Document):
     embedding = embedding_model.encode(text_for_embedding).tolist()
     doc_dict['embedding'] = embedding
     
-    # Prepare MongoDB operation info
+    # Prepare MongoDB operation info (show sample of embedding for display)
+    embedding_sample = embedding[:5] + [f"... ({len(embedding)} total dimensions)"]
     insert_query = {
         "insertOne": {
             "document": {
                 "title": doc_dict['title'],
                 "body": doc_dict['body'],
                 "tags": doc_dict['tags'],
-                "embedding": "[384-dimensional vector]",
+                "embedding": embedding_sample,  # Show sample for display
+                "embedding_dimensions": len(embedding),
                 "source": doc_dict.get('source', 'manual')
             }
         }
     }
     
+    # Store full embedding in MongoDB (doc_dict has the full embedding)
     result = documents.insert_one(doc_dict)
     execution_time = (time.time() - start_time) * 1000
     
@@ -478,12 +481,14 @@ async def semantic_search(q: str, limit: int = 10):
     
     try:
         # Use MongoDB's native $vectorSearch aggregation (Enterprise feature)
+        # Show sample of embedding for display (first 5 values)
+        embedding_display = query_embedding[:5] + [f"... ({len(query_embedding)} dimensions total)"]
         pipeline = [
             {
                 "$vectorSearch": {
                     "index": "vector_index",
                     "path": "embedding",
-                    "queryVector": "[VECTOR_EMBEDDING]",  # Placeholder for display
+                    "queryVector": embedding_display,  # Show sample embedding values
                     "numCandidates": limit * 10,
                     "limit": limit
                 }
@@ -960,7 +965,7 @@ async def chat_with_documents(chat_request: ChatRequest):
                 "$vectorSearch": {
                     "index": "vector_index",
                     "path": "embedding",
-                    "queryVector": "[VECTOR_EMBEDDING]",  # Placeholder for display
+                    "queryVector": query_embedding[:5] + [f"... ({len(query_embedding)} dimensions total)"],  # Show sample embedding values
                     "numCandidates": max_docs * 10,
                     "limit": max_docs
                 }
@@ -982,7 +987,7 @@ async def chat_with_documents(chat_request: ChatRequest):
                 "$vectorSearch": {
                     "index": "vector_index",
                     "path": "embedding",
-                    "queryVector": query_embedding,
+                    "queryVector": query_embedding,  # Full embedding for actual search
                     "numCandidates": max_docs * 10,
                     "limit": max_docs
                 }
