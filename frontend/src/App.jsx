@@ -8,14 +8,19 @@ const getApiUrl = () => {
   const protocol = window.location.protocol;
   const backendPort = "30888";
   
+  // Get build time for deployment verification
+  const buildTime = import.meta.env.VITE_BUILD_TIME || 'Unknown Build Time';
+  
   // Construct API URL using current hostname and backend port
-  return `${protocol}//${hostname}:${backendPort}`;
+  return {
+    url: `${protocol}//${hostname}:${backendPort}`,
+    buildTime: buildTime
+  };
 };
 
-
-
-const API_URL = getApiUrl();
+const { url: API_URL, buildTime: BUILD_TIME } = getApiUrl();
 console.log('Frontend API_URL:', API_URL);
+console.log('Frontend BUILD_TIME:', BUILD_TIME);
 console.log('VITE_API_URL env:', import.meta.env.VITE_API_URL);
 console.log('Window location:', window.location.href);
 
@@ -857,6 +862,9 @@ function App() {
     <div className="App">
       <header className="App-header">
         <h1>Document Search App</h1>
+        <p style={{ position: 'absolute', top: '50px', left: '20px', fontSize: '12px', color: '#ccc' }}>
+          Version: {BUILD_TIME}
+        </p>
         <button 
           onClick={() => {
             toggleSection('health');
