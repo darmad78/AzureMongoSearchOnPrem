@@ -115,6 +115,92 @@ function App() {
               </div>
             )}
             
+            {/* Workflow Steps Block (for audio upload) */}
+            {operation.result && operation.result.workflow_steps && (
+              <div className="mongodb-block mongodb-block-workflow">
+                <div className="mongodb-block-header">
+                  <span className="mongodb-block-icon">📋</span>
+                  <h4 className="mongodb-block-title">Processing Workflow</h4>
+                </div>
+                <div className="mongodb-block-content">
+                  {operation.result.workflow_steps.map((step, idx) => (
+                    <div key={idx} style={{
+                      marginBottom: '15px',
+                      padding: '12px',
+                      backgroundColor: '#fff',
+                      border: '1px solid #dee2e6',
+                      borderRadius: '6px',
+                      borderLeft: '4px solid #28a745'
+                    }}>
+                      <div style={{ display: 'flex', alignItems: 'center', marginBottom: '8px' }}>
+                        <span style={{
+                          backgroundColor: '#28a745',
+                          color: 'white',
+                          borderRadius: '50%',
+                          width: '24px',
+                          height: '24px',
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          fontSize: '0.85em',
+                          fontWeight: 'bold',
+                          marginRight: '10px'
+                        }}>
+                          {step.step}
+                        </span>
+                        <strong style={{ fontSize: '0.95em' }}>{step.name}</strong>
+                        {step.details.duration_ms && (
+                          <span style={{
+                            marginLeft: 'auto',
+                            fontSize: '0.8em',
+                            color: '#6c757d'
+                          }}>
+                            {step.details.duration_ms}ms
+                          </span>
+                        )}
+                      </div>
+                      <div style={{ marginLeft: '34px', fontSize: '0.85em', color: '#495057' }}>
+                        {Object.entries(step.details).filter(([key]) => key !== 'duration_ms').map(([key, value]) => (
+                          <div key={key} style={{ marginBottom: '4px' }}>
+                            <strong>{key.replace(/_/g, ' ')}:</strong> {
+                              typeof value === 'object' ? (
+                                <pre style={{
+                                  display: 'inline-block',
+                                  margin: '4px 0 0 0',
+                                  padding: '6px',
+                                  backgroundColor: '#f8f9fa',
+                                  borderRadius: '4px',
+                                  fontSize: '0.8em',
+                                  maxWidth: '100%',
+                                  overflow: 'auto'
+                                }}>
+                                  {JSON.stringify(value, null, 2)}
+                                </pre>
+                              ) : (
+                                <span> {String(value)}</span>
+                              )
+                            }
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  ))}
+                  {operation.result.total_duration_ms && (
+                    <div style={{
+                      marginTop: '15px',
+                      padding: '10px',
+                      backgroundColor: '#e7f3ff',
+                      borderRadius: '4px',
+                      textAlign: 'center',
+                      fontWeight: 'bold'
+                    }}>
+                      ⏱️ Total Duration: {operation.result.total_duration_ms}ms
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+            
             {/* Result Block */}
             {operation.result && !operation.result.workflow_steps && (
               <div className="mongodb-block mongodb-block-response">
