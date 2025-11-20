@@ -1,17 +1,14 @@
 import React, { useState, useEffect, useRef } from 'react';
 import './App.css';
 
-// Determine API URL: use env var, or construct from current location
+// Determine API URL: Always use the correct external IP for backend
 const getApiUrl = () => {
-  // Allow override via environment variable
-  if (import.meta.env.VITE_API_URL) {
-    return import.meta.env.VITE_API_URL;
-  }
+  // Always use the correct external IP - hardcoded to avoid build-time issues
+  const CORRECT_BACKEND_IP = "146.148.66.166";
+  const BACKEND_PORT = "30888";
   
-  // Otherwise construct dynamically
-  const hostname = window.location.hostname;
-  const protocol = window.location.protocol;
-  return `${protocol}//${hostname}:30888`;
+  // Always return the correct IP, ignoring any build-time env vars that might have wrong values
+  return `http://${CORRECT_BACKEND_IP}:${BACKEND_PORT}`;
 };
 
 

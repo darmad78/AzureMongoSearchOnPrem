@@ -258,6 +258,8 @@ spec:
     spec:
       containers:
       - name: backend
+        
+        
         image: ${BACKEND_IMAGE}
         imagePullPolicy: IfNotPresent
         ports:
@@ -355,7 +357,7 @@ log_step "Step 9: Deploying Frontend Application"
 # Get backend NodePort for external access
 BACKEND_NODE_PORT=$(kubectl get svc search-backend-svc -n ${NAMESPACE} -o jsonpath='{.spec.ports[0].nodePort}')
 # Use the correct external IP instead of VM_IP which might be internal
-EXTERNAL_IP="136.112.200.116"
+EXTERNAL_IP="146.148.66.166"
 BACKEND_EXTERNAL_URL="http://${EXTERNAL_IP}:${BACKEND_NODE_PORT}"
 
 log_info "Backend external URL: ${BACKEND_EXTERNAL_URL}"
