@@ -864,7 +864,7 @@ function App() {
     <div className="App">
       <header className="App-header">
         <h1>Document Search App</h1>
-        <p style={{ position: 'absolute', top: '50px', left: '20px', fontSize: '12px', color: '#ccc' }}>
+        <p style={{ position: 'absolute', top: '50px', left: '20px', fontSize: '12px', color: '#888', zIndex: 10 }}>
           Version: {BUILD_TIME}
         </p>
         <button 
