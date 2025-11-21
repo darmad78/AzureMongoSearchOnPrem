@@ -29,9 +29,10 @@ spec:
     spec:
       containers:
       - name: backend
-        image: azuremongosearchonprem-backend:latest
+        image: azuremongosearch-backend:latest
+        imagePullPolicy: Never
         ports:
-        - containerPort: 8000
+        - containerPort: 8888
         envFrom:
         - configMapRef:
             name: backend-config
@@ -96,7 +97,7 @@ spec:
         - containerPort: 5173
         env:
         - name: REACT_APP_API_URL
-          value: "http://search-backend-svc.mongodb.svc.cluster.local:8000"
+          value: "http://search-backend-svc.mongodb.svc.cluster.local:8888"
         readinessProbe:
           httpGet:
             path: /
