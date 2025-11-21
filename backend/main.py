@@ -1447,7 +1447,7 @@ Answer:""",
                         "num_predict": 500
                     }
                 },
-                timeout=(10, int(os.getenv("OLLAMA_TIMEOUT", "60")))  # (connect_timeout, read_timeout) - 10s connect, 60s read (reduced from 180s)
+                timeout=(10, int(os.getenv("OLLAMA_TIMEOUT", "360000")))  # (connect_timeout, read_timeout) - 10s connect, 360000s (6000 min / 100 hours) read timeout
             )
             
             # Handle non-200 status codes with better error messages
