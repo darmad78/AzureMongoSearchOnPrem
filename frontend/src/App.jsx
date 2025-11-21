@@ -59,6 +59,7 @@ function App() {
   const mediaRecorderRef = useRef(null);
   const audioChunksRef = useRef([]);
   const chatEndRef = useRef(null);
+  const uploadAbortControllerRef = useRef(null);
   
   // Collapsible sections state
   const [expandedSections, setExpandedSections] = useState({
@@ -701,6 +702,21 @@ function App() {
     }
   };
 
+  // Cancel upload function
+  const cancelUpload = () => {
+    if (uploadAbortControllerRef.current) {
+      uploadAbortControllerRef.current.abort();
+      uploadAbortControllerRef.current = null;
+    }
+    setIsUploadingAudio(false);
+    setUploadStatus('❌ Upload cancelled');
+    setUploadSteps(prev => prev.map(step => ({ ...step, status: "cancelled" })));
+    setTimeout(() => {
+      setUploadStatus('');
+      setUploadSteps([]);
+    }, 3000);
+  };
+
   // Upload audio file and create document
   const uploadAudioDocument = async (e) => {
     e.preventDefault();
@@ -712,6 +728,10 @@ function App() {
     setIsUploadingAudio(true);
     setUploadStatus('Starting upload...');
     setUploadSteps([]);
+
+    // Create abort controller for cancellation
+    uploadAbortControllerRef.current = new AbortController();
+    let stepInterval = null;
 
     try {
       const formData = new FormData();
@@ -725,14 +745,64 @@ function App() {
         step: 1,
         name: "Upload Audio File",
         status: "in_progress",
-        details: { filename: audioFile.name }
+        details: { filename: audioFile.name, file_size_bytes: audioFile.size }
       }]);
       setUploadStatus('📤 Uploading audio file...');
+
+      // Simulate step progression while waiting for response
+      stepInterval = setInterval(() => {
+        // Check if upload was cancelled
+        if (uploadAbortControllerRef.current?.signal.aborted) {
+          clearInterval(stepInterval);
+          return;
+        }
+        
+        setUploadSteps(prev => {
+          const currentStep = prev[prev.length - 1]?.step || 0;
+          if (currentStep === 1) {
+            return [
+              { ...prev[0], status: "completed" },
+              {
+                step: 2,
+                name: "Transcribe Audio to Text",
+                status: "in_progress",
+                details: {}
+              }
+            ];
+          } else if (currentStep === 2) {
+            return [
+              ...prev.slice(0, -1),
+              { ...prev[prev.length - 1], status: "completed" },
+              {
+                step: 3,
+                name: "Generate Embedding Vector",
+                status: "in_progress",
+                details: {}
+              }
+            ];
+          } else if (currentStep === 3) {
+            return [
+              ...prev.slice(0, -1),
+              { ...prev[prev.length - 1], status: "completed" },
+              {
+                step: 4,
+                name: "Insert into MongoDB",
+                status: "in_progress",
+                details: {}
+              }
+            ];
+          }
+          return prev;
+        });
+      }, 3000); // Update every 3 seconds
 
       const response = await fetch(`${API_URL}/documents/from-audio`, {
         method: 'POST',
         body: formData,
+        signal: uploadAbortControllerRef.current.signal,
       });
+      
+      if (stepInterval) clearInterval(stepInterval);
 
       if (response.ok) {
         const result = await response.json();
@@ -740,11 +810,19 @@ function App() {
         // Extract workflow steps from MongoDB operation
         let steps = [];
         if (result.mongodb_operation && result.mongodb_operation.result && result.mongodb_operation.result.workflow_steps) {
-          steps = result.mongodb_operation.result.workflow_steps;
+          steps = result.mongodb_operation.result.workflow_steps.map(step => ({
+            ...step,
+            status: "completed" // Ensure all steps are marked as completed
+          }));
           console.log('Workflow steps received:', steps.length, steps);
+        } else {
+          // If no steps from backend, mark all simulated steps as completed
+          setUploadSteps(prev => prev.map(step => ({ ...step, status: "completed" })));
         }
         
-        setUploadSteps(steps);
+        if (steps.length > 0) {
+          setUploadSteps(steps);
+        }
         setUploadStatus(`✅ Successfully created document: "${result.title}"`);
         
         // Capture MongoDB operation details
@@ -770,13 +848,21 @@ function App() {
       } else {
         const error = await response.json();
         setUploadStatus(`❌ Error: ${error.detail}`);
-        setUploadSteps([]);
+        setUploadSteps(prev => prev.map(step => ({ ...step, status: "error" })));
       }
     } catch (error) {
-      console.error('Error uploading audio:', error);
-      setUploadStatus('❌ Upload failed. Please try again.');
-      setUploadSteps([]);
+      if (error.name === 'AbortError') {
+        console.log('Upload cancelled by user');
+        setUploadStatus('❌ Upload cancelled');
+        setUploadSteps(prev => prev.map(step => ({ ...step, status: "cancelled" })));
+      } else {
+        console.error('Error uploading audio:', error);
+        setUploadStatus('❌ Upload failed. Please try again.');
+        setUploadSteps(prev => prev.map(step => ({ ...step, status: "error" })));
+      }
     } finally {
+      if (stepInterval) clearInterval(stepInterval);
+      uploadAbortControllerRef.current = null;
       setIsUploadingAudio(false);
     }
   };
@@ -856,16 +942,32 @@ function App() {
   const checkSystemHealth = async () => {
     setIsLoadingHealth(true);
     try {
+      console.log('🔍 Fetching system health from:', `${API_URL}/health/system`);
       const response = await fetch(`${API_URL}/health/system`);
+      console.log('📡 Response status:', response.status, response.statusText);
+      
       if (response.ok) {
         const data = await response.json();
+        console.log('✅ System health data received:', data);
         setSystemHealth(data);
         setLastHealthCheck(new Date().toISOString());
       } else {
-        console.error('Failed to fetch system health:', response.status);
+        const errorText = await response.text();
+        console.error('❌ Failed to fetch system health:', response.status, errorText);
+        // Set error state so user can see something went wrong
+        setSystemHealth({
+          error: true,
+          status: response.status,
+          message: errorText || 'Failed to fetch system health'
+        });
       }
     } catch (error) {
-      console.error('Error fetching system health:', error);
+      console.error('❌ Error fetching system health:', error);
+      // Set error state so user can see something went wrong
+      setSystemHealth({
+        error: true,
+        message: error.message || 'Network error while fetching system health'
+      });
     } finally {
       setIsLoadingHealth(false);
     }
@@ -993,9 +1095,41 @@ function App() {
                 <option value="ro">Romanian</option>
               </select>
             </div>
-            <button type="submit" disabled={isUploadingAudio || !audioFile}>
-              {isUploadingAudio ? '⏳ Processing...' : '🚀 Upload & Transcribe'}
-            </button>
+            <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
+              <button type="submit" disabled={isUploadingAudio || !audioFile}>
+                {isUploadingAudio ? '⏳ Processing...' : '🚀 Upload & Transcribe'}
+              </button>
+              {isUploadingAudio && (
+                <button 
+                  type="button" 
+                  onClick={cancelUpload}
+                  style={{
+                    backgroundColor: '#dc3545',
+                    color: 'white',
+                    padding: 'var(--spacing-md) var(--spacing-lg)',
+                    border: 'none',
+                    borderRadius: 'var(--radius-md)',
+                    cursor: 'pointer',
+                    fontSize: 'var(--font-size-base)',
+                    fontWeight: 'var(--font-weight-semibold)',
+                    fontFamily: 'var(--font-family)',
+                    maxWidth: '200px',
+                    transition: 'all var(--transition-base)',
+                    boxShadow: '0 4px 6px rgba(220, 53, 69, 0.3)'
+                  }}
+                  onMouseEnter={(e) => {
+                    e.target.style.transform = 'translateY(-2px)';
+                    e.target.style.boxShadow = '0 6px 12px rgba(220, 53, 69, 0.4)';
+                  }}
+                  onMouseLeave={(e) => {
+                    e.target.style.transform = 'translateY(0)';
+                    e.target.style.boxShadow = '0 4px 6px rgba(220, 53, 69, 0.3)';
+                  }}
+                >
+                  ❌ Cancel Upload
+                </button>
+              )}
+            </div>
           </form>
           
           {uploadStatus && (
@@ -1469,7 +1603,39 @@ function App() {
                 </div>
               )}
 
-              {systemHealth && (
+              {!isLoadingHealth && !systemHealth && (
+                <div style={{
+                  padding: '20px',
+                  backgroundColor: '#fff3cd',
+                  border: '1px solid #ffc107',
+                  borderRadius: '8px',
+                  color: '#856404',
+                  marginBottom: '20px',
+                  textAlign: 'center'
+                }}>
+                  <p>📊 No system health data available. Click "🔄 Refresh" to load system information.</p>
+                </div>
+              )}
+
+              {systemHealth && systemHealth.error && (
+                <div style={{
+                  padding: '20px',
+                  backgroundColor: '#f8d7da',
+                  border: '1px solid #f5c6cb',
+                  borderRadius: '8px',
+                  color: '#721c24',
+                  marginBottom: '20px'
+                }}>
+                  <h3 style={{ marginTop: 0 }}>❌ Error Loading System Health</h3>
+                  <p><strong>Status:</strong> {systemHealth.status || 'Unknown'}</p>
+                  <p><strong>Message:</strong> {systemHealth.message || 'Unknown error'}</p>
+                  <p style={{ fontSize: '0.9em', marginTop: '10px' }}>
+                    Check browser console for more details. Make sure the backend is running and accessible at {API_URL}/health/system
+                  </p>
+                </div>
+              )}
+
+              {systemHealth && !systemHealth.error && (
                 <>
                   {/* System Resources */}
                   {systemHealth.system_resources && (

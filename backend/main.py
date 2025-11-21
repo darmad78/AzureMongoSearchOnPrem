@@ -469,56 +469,91 @@ async def root():
 @app.get("/health/system", response_model=SystemHealthResponse)
 async def get_system_health():
     """Get comprehensive system health and architecture information"""
-    # Get MongoDB info
-    mongodb_info = get_mongodb_info()
-    
-    # Get Ollama info
-    ollama_info = get_ollama_info()
-    
-    # Get backend info
-    backend_memory = None
-    if PSUTIL_AVAILABLE:
+    try:
+        print("📊 /health/system endpoint called")
+        
+        # Get MongoDB info
         try:
-            process = psutil.Process()
-            backend_memory = round(process.memory_info().rss / (1024 * 1024), 2)
-        except:
-            pass
-    
-    backend_info = BackendInfo(
-        status="healthy",
-        version="1.0.0",
-        python_version=f"{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}",
-        whisper_model="base",
-        embedding_model="all-MiniLM-L6-v2",
-        llm_provider=LLM_PROVIDER,
-        memory_usage_mb=backend_memory
-    )
-    
-    # Get frontend info (from build time if available)
-    frontend_info = FrontendInfo(
-        build_time=os.getenv("FRONTEND_BUILD_TIME", None),
-        api_url=os.getenv("API_URL", None)
-    )
-    
-    # Get Kubernetes info
-    kubernetes_info = get_kubernetes_info()
-    
-    # Get Ops Manager info
-    ops_manager_info = get_ops_manager_info()
-    
-    # Get system resources
-    system_resources = get_system_resources()
-    
-    return SystemHealthResponse(
-        timestamp=time.strftime("%Y-%m-%d %H:%M:%S UTC", time.gmtime()),
-        mongodb=mongodb_info,
-        ollama=ollama_info,
-        backend=backend_info,
-        frontend=frontend_info,
-        kubernetes=kubernetes_info if kubernetes_info.available else None,
-        ops_manager=ops_manager_info if ops_manager_info.accessible else None,
-        system_resources=system_resources
-    )
+            mongodb_info = get_mongodb_info()
+            print(f"✅ MongoDB info retrieved: {mongodb_info.status}")
+        except Exception as e:
+            print(f"❌ Error getting MongoDB info: {e}")
+            mongodb_info = MongoDBInfo(status="error", connection_string=str(e)[:100])
+        
+        # Get Ollama info
+        try:
+            ollama_info = get_ollama_info()
+            print(f"✅ Ollama info retrieved: {ollama_info.status}")
+        except Exception as e:
+            print(f"❌ Error getting Ollama info: {e}")
+            ollama_info = OllamaInfo(status="error", url=OLLAMA_URL, model=OLLAMA_MODEL, available_models=[])
+        
+        # Get backend info
+        backend_memory = None
+        if PSUTIL_AVAILABLE:
+            try:
+                process = psutil.Process()
+                backend_memory = round(process.memory_info().rss / (1024 * 1024), 2)
+            except Exception as e:
+                print(f"⚠️  Could not get backend memory: {e}")
+        
+        backend_info = BackendInfo(
+            status="healthy",
+            version="1.0.0",
+            python_version=f"{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}",
+            whisper_model="base",
+            embedding_model="all-MiniLM-L6-v2",
+            llm_provider=LLM_PROVIDER,
+            memory_usage_mb=backend_memory
+        )
+        
+        # Get frontend info (from build time if available)
+        frontend_info = FrontendInfo(
+            build_time=os.getenv("FRONTEND_BUILD_TIME", None),
+            api_url=os.getenv("API_URL", None)
+        )
+        
+        # Get Kubernetes info
+        try:
+            kubernetes_info = get_kubernetes_info()
+        except Exception as e:
+            print(f"⚠️  Error getting Kubernetes info: {e}")
+            kubernetes_info = KubernetesInfo(available=False)
+        
+        # Get Ops Manager info
+        try:
+            ops_manager_info = get_ops_manager_info()
+        except Exception as e:
+            print(f"⚠️  Error getting Ops Manager info: {e}")
+            ops_manager_info = OpsManagerInfo(status="not_accessible", accessible=False)
+        
+        # Get system resources
+        try:
+            system_resources = get_system_resources()
+        except Exception as e:
+            print(f"⚠️  Error getting system resources: {e}")
+            system_resources = SystemResources()
+        
+        response = SystemHealthResponse(
+            timestamp=time.strftime("%Y-%m-%d %H:%M:%S UTC", time.gmtime()),
+            mongodb=mongodb_info,
+            ollama=ollama_info,
+            backend=backend_info,
+            frontend=frontend_info,
+            kubernetes=kubernetes_info if kubernetes_info.available else None,
+            ops_manager=ops_manager_info if ops_manager_info.accessible else None,
+            system_resources=system_resources
+        )
+        
+        print(f"✅ System health response prepared successfully")
+        return response
+        
+    except Exception as e:
+        print(f"❌ Critical error in /health/system: {e}")
+        import traceback
+        traceback.print_exc()
+        # Return a minimal error response
+        raise HTTPException(status_code=500, detail=f"Error generating system health: {str(e)}")
 
 @app.get("/health/ollama")
 async def check_ollama_health():
