@@ -841,6 +841,10 @@ def call_llm(prompt: str, context: str, system_prompt: Optional[str] = None) -> 
     # Default system prompt
     default_system_prompt = "You are a helpful assistant that answers questions based on the provided context. If the answer is not in the context, say so."
     system_instruction = system_prompt if system_prompt else default_system_prompt
+    if system_prompt:
+        print(f"📝 LLM will use custom system prompt: {system_instruction[:150]}...")
+    else:
+        print(f"📝 LLM will use default system prompt")
     if LLM_PROVIDER == "openai" and openai_client:
         # OpenAI API call
         try:
@@ -1081,6 +1085,10 @@ async def chat_with_documents(chat_request: ChatRequest):
     
     # Step 3: Generate answer using LLM with custom system prompt
     system_prompt = chat_request.system_prompt if chat_request.system_prompt else None
+    if system_prompt:
+        print(f"🔧 Using CUSTOM system prompt: {system_prompt[:100]}...")
+    else:
+        print("🔧 Using DEFAULT system prompt")
     answer = call_llm(question, context, system_prompt)
     
     # Step 4: Prepare MongoDB operation details

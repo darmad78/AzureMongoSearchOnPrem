@@ -797,16 +797,19 @@ function App() {
     setChatHistory(prev => [...prev, userMessage]);
 
     try {
+      const requestBody = {
+        question: userQuestion,
+        max_context_docs: 10,  // Increased from 3 to 10 for better RAG context
+        system_prompt: customPrompt.trim() || undefined
+      };
+      console.log('📤 Sending chat request with system_prompt:', requestBody.system_prompt || '(using default)');
+      
       const response = await fetch(`${API_URL}/chat`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({
-          question: userQuestion,
-          max_context_docs: 10,  // Increased from 3 to 10 for better RAG context
-          system_prompt: customPrompt.trim() || undefined
-        }),
+        body: JSON.stringify(requestBody),
       });
 
       if (response.ok) {
