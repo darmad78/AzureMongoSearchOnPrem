@@ -172,13 +172,15 @@
   align-items: center;
   gap: var(--spacing-md);
   padding: var(--spacing-lg);
-  margin: calc(-1 * var(--spacing-2xl)) calc(-1 * var(--spacing-2xl)) 0 calc(-1 * var(--spacing-2xl));
+  margin: calc(-1 * var(--spacing-2xl)) calc(-1 * var(--spacing-2xl)) var(--spacing-lg) calc(-1 * var(--spacing-2xl));
   background: linear-gradient(135deg, var(--gray-100) 0%, var(--gray-200) 100%);
   border-radius: var(--radius-lg) var(--radius-lg) 0 0;
   transition: all var(--transition-base);
   font-weight: var(--font-weight-semibold);
   font-size: var(--font-size-lg);
   color: var(--text-primary);
+  position: relative;
+  z-index: 10;
 }
 
 .collapsible-header:hover {
@@ -196,7 +198,9 @@
 
 .collapsible-content {
   animation: slideDown 0.3s ease-out;
-  padding-top: 20px;
+  padding-top: 0;
+  position: relative;
+  z-index: 1;
 }
 
 @keyframes slideDown {

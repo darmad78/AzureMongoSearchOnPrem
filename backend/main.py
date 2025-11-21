@@ -1049,14 +1049,14 @@ async def semantic_search(q: str, limit: int = 10):
     
     try:
         # Use MongoDB's native $vectorSearch aggregation (Enterprise feature)
-        # Show sample of embedding for display (first 5 values)
-        embedding_display = query_embedding[:5] + [f"... ({len(query_embedding)} dimensions total)"]
-        pipeline = [
+        # Create display version showing first 5 values + note (actual query uses full 384-dim vector)
+        query_vector_sample = query_embedding[:5] + [f"... (remaining {len(query_embedding) - 5} dimensions)"]
+        pipeline_display = [
             {
                 "$vectorSearch": {
                     "index": "vector_index",
                     "path": "embedding",
-                    "queryVector": embedding_display,  # Show sample embedding values
+                    "queryVector": query_vector_sample,  # Display: first 5 values + note
                     "numCandidates": limit * 10,
                     "limit": limit
                 }
@@ -1072,13 +1072,13 @@ async def semantic_search(q: str, limit: int = 10):
             }
         ]
         
-        # Execute MongoDB vector search (use actual embedding)
+        # Execute MongoDB vector search (use actual full embedding)
         actual_pipeline = [
             {
                 "$vectorSearch": {
                     "index": "vector_index",
                     "path": "embedding",
-                    "queryVector": query_embedding,
+                    "queryVector": query_embedding,  # Full 384-dimensional vector
                     "numCandidates": limit * 10,
                     "limit": limit
                 }
@@ -1123,7 +1123,10 @@ async def semantic_search(q: str, limit: int = 10):
         
         mongodb_op = MongoDBOperation(
             operation="aggregate",
-            query={"aggregate": pipeline},
+            query={
+                "aggregate": pipeline_display,
+                "note": "⚠️ Display version: queryVector shown truncated (first 5 of 384 dimensions). Actual query uses full 384-dimensional vector."
+            },
             result={
                 "count": len(top_results),
                 "documents_found": len(top_results),
@@ -1142,7 +1145,10 @@ async def semantic_search(q: str, limit: int = 10):
             query=q, 
             results=top_results, 
             total=len(top_results),
-            mongodb_query={"aggregate": pipeline},
+            mongodb_query={
+                "aggregate": pipeline_display,
+                "note": "⚠️ Display version: queryVector shown truncated (first 5 of 384 dimensions). Actual query uses full 384-dimensional vector."
+            },
             execution_time_ms=round(execution_time, 2),
             search_type="vector",
             index_used=vector_index_info,
@@ -1524,13 +1530,14 @@ async def chat_with_documents(chat_request: ChatRequest):
     # Use MongoDB native $vectorSearch
     try:
         
-        # Vector search aggregation pipeline
-        pipeline = [
+        # Create display version showing first 5 values + note (actual query uses full 384-dim vector)
+        query_vector_sample = query_embedding[:5] + [f"... (remaining {len(query_embedding) - 5} dimensions)"]
+        pipeline_display = [
             {
                 "$vectorSearch": {
                     "index": "vector_index",
                     "path": "embedding",
-                    "queryVector": query_embedding[:5] + [f"... ({len(query_embedding)} dimensions total)"],  # Show sample embedding values
+                    "queryVector": query_vector_sample,  # Display: first 5 values + note
                     "numCandidates": max_docs * 10,
                     "limit": max_docs
                 }
@@ -1546,13 +1553,13 @@ async def chat_with_documents(chat_request: ChatRequest):
             }
         ]
         
-        # Execute with actual embedding
+        # Execute with actual full embedding
         actual_pipeline = [
             {
                 "$vectorSearch": {
                     "index": "vector_index",
                     "path": "embedding",
-                    "queryVector": query_embedding,  # Full embedding for actual search
+                    "queryVector": query_embedding,  # Full 384-dimensional vector
                     "numCandidates": max_docs * 10,
                     "limit": max_docs
                 }
@@ -1575,8 +1582,8 @@ async def chat_with_documents(chat_request: ChatRequest):
         
         execution_time = (time.time() - start_time) * 1000
         query_info = {
-            "aggregate": pipeline,
-            "note": "MongoDB native $vectorSearch for RAG"
+            "aggregate": pipeline_display,
+            "note": "⚠️ Display version: queryVector shown truncated (first 5 of 384 dimensions). Actual query uses full 384-dimensional vector."
         }
         search_type = "vector_search"
         

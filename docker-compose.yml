@@ -170,6 +170,9 @@ services:
     build:
       context: ./frontend
       dockerfile: Dockerfile
+      args:
+        VITE_API_URL: http://localhost:8000
+        VITE_BUILD_TIME: ${VITE_BUILD_TIME}
     container_name: search-frontend
     ports:
       - "5173:5173"

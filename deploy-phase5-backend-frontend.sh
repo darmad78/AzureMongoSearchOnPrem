@@ -120,7 +120,13 @@ if [ ! -d "./frontend" ]; then
 fi
 
 log_info "Building frontend image: ${FRONTEND_IMAGE}"
-docker build -t ${FRONTEND_IMAGE} ./frontend
+# Build frontend with build time and API URL
+BUILD_TIME=$(date -u +"%Y-%m-%d %H:%M:%S UTC")
+log_info "Build time: ${BUILD_TIME}"
+docker build \
+  --build-arg VITE_API_URL=http://${EXTERNAL_IP}:${BACKEND_PORT} \
+  --build-arg VITE_BUILD_TIME="${BUILD_TIME}" \
+  -t ${FRONTEND_IMAGE} ./frontend
 
 if [ $? -eq 0 ]; then
     log_success "Frontend image built successfully"
@@ -588,7 +594,8 @@ echo "🔄 To rebuild and redeploy:"
 echo "   1. Make your code changes"
 echo "   2. Rebuild images:"
 echo "      docker build -t ${BACKEND_IMAGE} ./backend"
-echo "      docker build -t ${FRONTEND_IMAGE} ./frontend"
+BUILD_TIME_EXAMPLE=$(date -u +"%Y-%m-%d %H:%M:%S UTC")
+echo "      docker build --build-arg VITE_API_URL=http://${EXTERNAL_IP}:${BACKEND_PORT} --build-arg VITE_BUILD_TIME=\"${BUILD_TIME_EXAMPLE}\" -t ${FRONTEND_IMAGE} ./frontend"
 echo "   3. Load to minikube (if using minikube):"
 echo "      minikube image load ${BACKEND_IMAGE}"
 echo "      minikube image load ${FRONTEND_IMAGE}"

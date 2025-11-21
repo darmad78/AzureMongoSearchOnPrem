@@ -12,9 +12,11 @@ RUN npm install
 # Copy application code
 COPY . .
 
-# Accept build argument for API URL
+# Accept build arguments for API URL and Build Time
 ARG VITE_API_URL
+ARG VITE_BUILD_TIME
 ENV VITE_API_URL=$VITE_API_URL
+ENV VITE_BUILD_TIME=$VITE_BUILD_TIME
 
 # Build the application
 RUN npm run build
