@@ -6,7 +6,10 @@ from typing import List, Optional, Tuple, Dict, Any
 import os
 import whisper
 from sentence_transformers import SentenceTransformer
+import sentence_transformers
 import numpy as np
+import fastapi
+import pymongo
 import tempfile
 import shutil
 from openai import OpenAI
@@ -16,6 +19,7 @@ import subprocess
 import sys
 import time
 import platform
+import uvicorn
 try:
     import psutil
     PSUTIL_AVAILABLE = True
@@ -181,6 +185,17 @@ class OllamaInfo(BaseModel):
     available_models: Optional[List[str]] = None
     memory_usage_mb: Optional[float] = None
 
+class ModelInfo(BaseModel):
+    name: str
+    version: Optional[str] = None
+    status: str  # "loaded", "not_loaded", "error"
+    memory_usage_mb: Optional[float] = None
+    details: Optional[Dict[str, Any]] = None
+
+class LibraryInfo(BaseModel):
+    name: str
+    version: Optional[str] = None
+
 class BackendInfo(BaseModel):
     status: str
     version: str
@@ -189,6 +204,9 @@ class BackendInfo(BaseModel):
     embedding_model: str
     llm_provider: str
     memory_usage_mb: Optional[float] = None
+    models: Optional[List[ModelInfo]] = None
+    libraries: Optional[List[LibraryInfo]] = None
+    ffmpeg_version: Optional[str] = None
 
 class FrontendInfo(BaseModel):
     build_time: Optional[str] = None
@@ -497,6 +515,108 @@ async def get_system_health():
             except Exception as e:
                 print(f"⚠️  Could not get backend memory: {e}")
         
+        # Get model information
+        models_info = []
+        try:
+            # Whisper model info
+            whisper_status = "loaded" if whisper_model else "not_loaded"
+            models_info.append(ModelInfo(
+                name="Whisper",
+                version=whisper.__version__ if hasattr(whisper, '__version__') else "20231117",
+                status=whisper_status,
+                details={
+                    "model_name": "base",
+                    "purpose": "Audio transcription",
+                    "framework": "PyTorch",
+                    "uses_ffmpeg": True
+                }
+            ))
+        except Exception as e:
+            models_info.append(ModelInfo(
+                name="Whisper",
+                status="error",
+                details={"error": str(e)[:100]}
+            ))
+        
+        try:
+            # SentenceTransformer model info
+            embedding_status = "loaded" if embedding_model else "not_loaded"
+            embedding_dim = None
+            if embedding_model:
+                try:
+                    # Get embedding dimension by encoding a test string
+                    test_embedding = embedding_model.encode("test")
+                    embedding_dim = len(test_embedding)
+                except:
+                    pass
+            
+            models_info.append(ModelInfo(
+                name="SentenceTransformer",
+                version=sentence_transformers.__version__ if hasattr(sentence_transformers, '__version__') else "2.3.1",
+                status=embedding_status,
+                details={
+                    "model_name": "all-MiniLM-L6-v2",
+                    "purpose": "Text embeddings for semantic search",
+                    "embedding_dimensions": embedding_dim or 384,
+                    "framework": "PyTorch"
+                }
+            ))
+        except Exception as e:
+            models_info.append(ModelInfo(
+                name="SentenceTransformer",
+                status="error",
+                details={"error": str(e)[:100]}
+            ))
+        
+        # Get library versions
+        libraries_info = []
+        try:
+            import torch
+            libraries_info.append(LibraryInfo(name="PyTorch", version=torch.__version__))
+        except:
+            pass
+        
+        try:
+            import transformers
+            libraries_info.append(LibraryInfo(name="Transformers", version=transformers.__version__))
+        except:
+            pass
+        
+        try:
+            libraries_info.append(LibraryInfo(name="FastAPI", version=fastapi.__version__))
+        except:
+            pass
+        
+        try:
+            libraries_info.append(LibraryInfo(name="NumPy", version=np.__version__))
+        except:
+            pass
+        
+        try:
+            libraries_info.append(LibraryInfo(name="PyMongo", version=pymongo.__version__))
+        except:
+            pass
+        
+        try:
+            libraries_info.append(LibraryInfo(name="Uvicorn", version=uvicorn.__version__))
+        except:
+            pass
+        
+        try:
+            libraries_info.append(LibraryInfo(name="Requests", version=requests.__version__))
+        except:
+            pass
+        
+        # Get FFmpeg version
+        ffmpeg_version = None
+        try:
+            result = subprocess.run(['ffmpeg', '-version'], capture_output=True, text=True, timeout=5)
+            if result.returncode == 0:
+                first_line = result.stdout.split('\n')[0]
+                ffmpeg_version = first_line.split(' ')[2] if len(first_line.split(' ')) > 2 else "unknown"
+        except:
+            pass
+        
         backend_info = BackendInfo(
             status="healthy",
             version="1.0.0",
@@ -504,7 +624,10 @@ async def get_system_health():
             whisper_model="base",
             embedding_model="all-MiniLM-L6-v2",
             llm_provider=LLM_PROVIDER,
-            memory_usage_mb=backend_memory
+            memory_usage_mb=backend_memory,
+            models=models_info,
+            libraries=libraries_info,
+            ffmpeg_version=ffmpeg_version
         )
         
         # Get frontend info (from build time if available)
