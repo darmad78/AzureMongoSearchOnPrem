@@ -57,9 +57,22 @@ if LLM_PROVIDER == "openai" and OPENAI_API_KEY:
 elif LLM_PROVIDER == "ollama":
     print(f"Using Ollama at {OLLAMA_URL} with model {OLLAMA_MODEL}")
 
-# MongoDB connection
+# MongoDB connection with optimized timeouts and settings
 MONGODB_URL = os.getenv("MONGODB_URL", "mongodb://admin:password123@localhost:27017/searchdb?authSource=admin")
-client = MongoClient(MONGODB_URL)
+# Add connection timeouts to prevent hanging
+# serverSelectionTimeoutMS: How long to wait for server selection (default: 30s)
+# connectTimeoutMS: How long to wait for initial connection (default: 20s)
+# socketTimeoutMS: How long to wait for socket operations (default: None = no timeout)
+# maxPoolSize: Maximum number of connections in pool (default: 100)
+client = MongoClient(
+    MONGODB_URL,
+    serverSelectionTimeoutMS=5000,  # 5 seconds to select server
+    connectTimeoutMS=5000,  # 5 seconds to connect
+    socketTimeoutMS=30000,  # 30 seconds for operations
+    maxPoolSize=50,  # Limit connection pool size
+    retryWrites=True,
+    retryReads=True
+)
 db = client.searchdb
 documents = db.documents
 
@@ -881,6 +894,8 @@ async def create_document_from_audio(
         # - MongoDB needs to serialize and write the document
         # - If indexes exist, MongoDB needs to update them
         step_start = time.time()
+        print(f"💾 Step 5: Preparing document for MongoDB insertion...")
+        
         doc_dict = {
             "title": title,
             "body": transcribed_text,
@@ -892,13 +907,19 @@ async def create_document_from_audio(
             "embedding": embedding  # 384-dimensional vector (~1.5KB)
         }
         
+        # Calculate document size before insertion
+        import sys
+        doc_size_estimate = sys.getsizeof(str(doc_dict))
+        embedding_size = len(embedding) * 4  # 4 bytes per float32
+        print(f"📊 Document size estimate: ~{doc_size_estimate / 1024:.2f} KB (embedding: ~{embedding_size / 1024:.2f} KB)")
+        
         insert_query = {
             "insertOne": {
                 "document": {
                     "title": doc_dict['title'],
                     "body": f"{doc_dict['body'][:100]}...",
                     "tags": doc_dict['tags'],
-                    "embedding": f"[{len(embedding)}-dimensional vector, ~{len(embedding) * 4 / 1024:.2f} KB]",
+                    "embedding": f"[{len(embedding)}-dimensional vector, ~{embedding_size / 1024:.2f} KB]",
                     "source": "audio",
                     "audio_filename": audio.filename,
                     "detected_language": detected_language,
@@ -907,16 +928,18 @@ async def create_document_from_audio(
             }
         }
         
+        print(f"💾 Inserting document into MongoDB...")
+        insert_start = time.time()
         result = documents.insert_one(doc_dict)
+        insert_time = (time.time() - insert_start) * 1000
+        print(f"⏱️  MongoDB insert completed in {insert_time:.2f}ms")
+        
         mongodb_execution_time = (time.time() - step_start) * 1000
         
         # Get the inserted document
         inserted_doc = documents.find_one({"_id": result.inserted_id})
         
-        # Calculate document size for performance analysis
-        import sys
-        doc_size_bytes = sys.getsizeof(str(doc_dict))
-        embedding_size_bytes = sys.getsizeof(embedding) if embedding else 0
+        # Document size already calculated above (doc_size_estimate and embedding_size)
         
         workflow_steps.append({
             "step": 5,
@@ -926,8 +949,8 @@ async def create_document_from_audio(
                 "inserted_id": str(result.inserted_id),
                 "acknowledged": result.acknowledged,
                 "duration_ms": round(mongodb_execution_time, 2),
-                "document_size_bytes": doc_size_bytes,
-                "embedding_size_bytes": embedding_size_bytes,
+                "document_size_bytes": doc_size_estimate,
+                "embedding_size_bytes": embedding_size,
                 "document": {
                     "_id": str(inserted_doc["_id"]),
                     "title": inserted_doc.get("title", ""),
@@ -1019,11 +1042,12 @@ async def semantic_search(q: str, limit: int = 10):
     vector_index_available, vector_index_status = check_vector_index_exists()
     
     if not vector_index_available:
-        print(f"⚠️  Vector search index 'vector_index' not found or not ready (status: {vector_index_status}). Using Python similarity fallback.")
+        raise HTTPException(
+            status_code=503,
+            detail=f"MongoDB Vector Search is not available. Vector index 'vector_index' not found or not ready (status: {vector_index_status}). To enable: 1) Deploy mongot: ./deploy-search-only.sh, 2) Configure MongoDB: Set MONGOT_HOST in docker-compose.override.yml, 3) Restart MongoDB: docker compose restart mongodb"
+        )
     
     try:
-        if not vector_index_available:
-            raise Exception("Vector index not available")
         # Use MongoDB's native $vectorSearch aggregation (Enterprise feature)
         # Show sample of embedding for display (first 5 values)
         embedding_display = query_embedding[:5] + [f"... ({len(query_embedding)} dimensions total)"]
@@ -1126,107 +1150,18 @@ async def semantic_search(q: str, limit: int = 10):
         )
         
     except Exception as e:
-        # Fallback to manual vector search if $vectorSearch is not available
+        # Return error if vector search is not available (no Python fallback)
         error_msg = str(e)
-        if "SearchNotEnabled" in error_msg or "31082" in error_msg:
-            print("⚠️  Native $vectorSearch not available. To enable:")
-            print("   1. Deploy mongot: ./deploy-search-only.sh")
-            print("   2. Configure MongoDB: Set MONGOT_HOST in docker-compose.override.yml")
-            print("   3. Restart MongoDB: docker compose restart mongodb")
-            print("   Using Python-based similarity search as fallback...")
+        if "SearchNotEnabled" in error_msg or "31082" in error_msg or "$vectorSearch" in error_msg:
+            raise HTTPException(
+                status_code=503,
+                detail=f"MongoDB Vector Search is not enabled. To enable: 1) Deploy mongot: ./deploy-search-only.sh, 2) Configure MongoDB: Set MONGOT_HOST in docker-compose.override.yml, 3) Restart MongoDB: docker compose restart mongodb. Error: {error_msg}"
+            )
         else:
-            print(f"Vector search error: {e}. Using fallback search.")
-        
-        # Get all documents with embeddings
-        all_docs = list(documents.find({"embedding": {"$exists": True}}))
-        
-        fallback_query = {
-            "find": {"embedding": {"$exists": True}},
-            "note": "Using Python cosine similarity (fallback)"
-        }
-        
-        if not all_docs:
-            execution_time = (time.time() - start_time) * 1000
-            mongodb_op = MongoDBOperation(
-                operation="find",
-                query=fallback_query,
-                result={
-                    "count": 0,
-                    "documents_found": 0,
-                    "query": q,
-                    "search_type": "vector_fallback",
-                    "index_used": "Python cosine similarity (no vector index)",
-                    "message": "No documents with embeddings found in database"
-                },
-                execution_time_ms=round(execution_time, 2),
-                documents_affected=0,
-                index_used={"note": "No vector index available, using Python similarity"}
+            raise HTTPException(
+                status_code=500,
+                detail=f"MongoDB Vector Search failed: {error_msg}"
             )
-            return SearchResponse(
-                query=q, 
-                results=[], 
-                total=0,
-                mongodb_query=fallback_query,
-                execution_time_ms=round(execution_time, 2),
-                search_type="vector_fallback",
-                index_used={"note": "No vector index available, using Python similarity"},
-                mongodb_operation=mongodb_op
-            )
-        
-        # Calculate cosine similarity manually as fallback
-        results_with_scores = []
-        for doc in all_docs:
-            if "embedding" in doc:
-                similarity = np.dot(query_embedding, doc["embedding"]) / (
-                    np.linalg.norm(query_embedding) * np.linalg.norm(doc["embedding"])
-                )
-                results_with_scores.append((doc, similarity))
-        
-        # Sort by similarity
-        results_with_scores.sort(key=lambda x: x[1], reverse=True)
-        
-        # Take top results
-        top_results = []
-        similarity_scores = []
-        for doc, score in results_with_scores[:limit]:
-            top_results.append(DocumentResponse(
-                id=str(doc["_id"]),
-                title=doc["title"],
-                body=doc["body"],
-                tags=doc["tags"]
-            ))
-            similarity_scores.append(round(score, 4))
-        
-        execution_time = (time.time() - start_time) * 1000
-        
-        mongodb_op = MongoDBOperation(
-            operation="find + Python similarity",
-            query=fallback_query,
-            result={
-                "count": len(top_results),
-                "documents_found": len(top_results),
-                "similarity_scores": similarity_scores,
-                "query": q,
-                "search_type": "vector_fallback",
-                "index_used": "Python cosine similarity (no vector index)",
-                "total_documents_searched": len(all_docs),
-                "embedding_dimensions": len(query_embedding)
-            },
-            execution_time_ms=round(execution_time, 2),
-            documents_affected=len(top_results),
-            index_used={"note": "No vector index available, using Python similarity"}
-        )
-        
-        return SearchResponse(
-            query=q, 
-            results=top_results, 
-            total=len(top_results),
-            mongodb_query=fallback_query,
-            execution_time_ms=round(execution_time, 2),
-            search_type="vector_fallback",
-            index_used={"note": "No vector index available, using Python similarity"},
-            mongodb_operation=mongodb_op
-        )
 
 @app.get("/documents", response_model=List[DocumentResponse])
 async def get_documents():
@@ -1506,7 +1441,7 @@ Answer:""",
                         "num_predict": 500
                     }
                 },
-                timeout=int(os.getenv("OLLAMA_TIMEOUT", "180"))  # Default 3 minutes for LLM generation
+                timeout=(10, int(os.getenv("OLLAMA_TIMEOUT", "60")))  # (connect_timeout, read_timeout) - 10s connect, 60s read (reduced from 180s)
             )
             
             # Handle non-200 status codes with better error messages
@@ -1581,12 +1516,13 @@ async def chat_with_documents(chat_request: ChatRequest):
     vector_index_available, vector_index_status = check_vector_index_exists()
     
     if not vector_index_available:
-        print(f"⚠️  Vector search index 'vector_index' not found or not ready for RAG (status: {vector_index_status}). Using Python similarity fallback.")
+        raise HTTPException(
+            status_code=503,
+            detail=f"MongoDB Vector Search is not available for RAG. Vector index 'vector_index' not found or not ready (status: {vector_index_status}). To enable: 1) Deploy mongot: ./deploy-search-only.sh, 2) Configure MongoDB: Set MONGOT_HOST in docker-compose.override.yml, 3) Restart MongoDB: docker compose restart mongodb"
+        )
     
-    # Try MongoDB native $vectorSearch first
+    # Use MongoDB native $vectorSearch
     try:
-        if not vector_index_available:
-            raise Exception("Vector index not available")
         
         # Vector search aggregation pipeline
         pipeline = [
@@ -1645,53 +1581,18 @@ async def chat_with_documents(chat_request: ChatRequest):
         search_type = "vector_search"
         
     except Exception as e:
-        # Fallback to Python similarity search
+        # Return error if vector search is not available (no Python fallback)
         error_msg = str(e)
         if "SearchNotEnabled" in error_msg or "31082" in error_msg or "$vectorSearch" in error_msg:
-            print("⚠️  Native $vectorSearch not available for RAG. Using Python similarity fallback...")
+            raise HTTPException(
+                status_code=503,
+                detail=f"MongoDB Vector Search is not enabled for RAG. To enable: 1) Deploy mongot: ./deploy-search-only.sh, 2) Configure MongoDB: Set MONGOT_HOST in docker-compose.override.yml, 3) Restart MongoDB: docker compose restart mongodb. Error: {error_msg}"
+            )
         else:
-            print(f"Vector search error in RAG: {e}. Using Python similarity fallback.")
-        
-        # Get all documents with embeddings
-        find_query = {"find": {"embedding": {"$exists": True}}}
-        all_docs = list(documents.find({"embedding": {"$exists": True}}))
-        
-        if not all_docs:
-            execution_time = (time.time() - start_time) * 1000
-            mongodb_op = MongoDBOperation(
-                operation="find",
-                query=find_query,
-                result={"count": 0},
-                execution_time_ms=round(execution_time, 2),
-                documents_affected=0
+            raise HTTPException(
+                status_code=500,
+                detail=f"MongoDB Vector Search failed in RAG: {error_msg}"
             )
-            return ChatResponse(
-                question=question,
-                answer="I don't have any documents to answer your question. Please upload some documents first.",
-                sources=[],
-                model_used=f"{LLM_PROVIDER}: {OLLAMA_MODEL if LLM_PROVIDER == 'ollama' else 'gpt-3.5-turbo'}",
-                mongodb_operation=mongodb_op
-            )
-        
-        # Calculate similarities in Python
-        results_with_scores = []
-        for doc in all_docs:
-            if "embedding" in doc:
-                similarity = np.dot(query_embedding, doc["embedding"]) / (
-                    np.linalg.norm(query_embedding) * np.linalg.norm(doc["embedding"])
-                )
-                results_with_scores.append((doc, similarity))
-        
-        # Sort and get top documents
-        results_with_scores.sort(key=lambda x: x[1], reverse=True)
-        top_docs_with_scores = results_with_scores[:max_docs]
-        
-        execution_time = (time.time() - start_time) * 1000
-        query_info = {
-            "find": {"embedding": {"$exists": True}},
-            "note": "Python cosine similarity (fallback - $vectorSearch not available)"
-        }
-        search_type = "python_similarity"
     
     # Step 2: Build context from retrieved documents
     top_docs = [doc for doc, score in top_docs_with_scores]
@@ -1725,24 +1626,18 @@ async def chat_with_documents(chat_request: ChatRequest):
         "retrieved_documents": len(top_docs)
     }
     
-    # Add scores/similarity information
-    if search_type == "vector_search":
-        result_data["scores"] = [round(score, 4) for _, score in top_docs_with_scores]
-        index_used = {
-            "name": "vector_index",
-            "type": "vectorSearch",
-            "field": "embedding",
-            "dimensions": 384,
-            "similarity": "cosine"
-        }
-    else:
-        result_data["similarity_scores"] = [round(score, 4) for _, score in top_docs_with_scores]
-        if 'all_docs' in locals():
-            result_data["total_documents"] = len(all_docs)
-        index_used = None
+    # Add scores/similarity information (always vector_search now, no Python fallback)
+    result_data["scores"] = [round(score, 4) for _, score in top_docs_with_scores]
+    index_used = {
+        "name": "vector_index",
+        "type": "vectorSearch",
+        "field": "embedding",
+        "dimensions": 384,
+        "similarity": "cosine"
+    }
     
     mongodb_op = MongoDBOperation(
-        operation="aggregate" if search_type == "vector_search" else "find + Python similarity",
+        operation="aggregate",
         query=query_info,
         result=result_data,
         execution_time_ms=round(execution_time, 2),
