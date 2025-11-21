@@ -35,6 +35,7 @@ function App() {
   const [isRecording, setIsRecording] = useState(false);
   const [isTranscribing, setIsTranscribing] = useState(false);
   const [useSemanticSearch, setUseSemanticSearch] = useState(false);
+  const [semanticSearchLimit, setSemanticSearchLimit] = useState(10);
   const [queryDetails, setQueryDetails] = useState(null);
   const [audioFile, setAudioFile] = useState(null);
   const [audioTitle, setAudioTitle] = useState('');
@@ -628,7 +629,8 @@ function App() {
     setIsSearching(true);
     try {
       const endpoint = useSemanticSearch ? '/search/semantic' : '/search';
-      const response = await fetch(`${API_URL}${endpoint}?q=${encodeURIComponent(query)}`);
+      const limitParam = useSemanticSearch ? `&limit=${semanticSearchLimit}` : '';
+      const response = await fetch(`${API_URL}${endpoint}?q=${encodeURIComponent(query)}${limitParam}`);
       const data = await response.json();
       setSearchResults(data.results);
       
@@ -1479,6 +1481,47 @@ function App() {
                 {useSemanticSearch ? '🧠 Semantic Search' : '📝 Text Search'}
               </span>
             </label>
+            {useSemanticSearch && (
+              <div style={{ 
+                marginLeft: '20px', 
+                display: 'flex', 
+                alignItems: 'center', 
+                gap: '10px' 
+              }}>
+                <label style={{ 
+                  fontSize: '0.9em', 
+                  fontWeight: '600',
+                  color: '#495057'
+                }}>
+                  Limit:
+                </label>
+                <select
+                  value={semanticSearchLimit}
+                  onChange={(e) => setSemanticSearchLimit(parseInt(e.target.value))}
+                  style={{
+                    padding: '6px 12px',
+                    border: '1px solid #dee2e6',
+                    borderRadius: '4px',
+                    fontSize: '0.9em',
+                    backgroundColor: 'white',
+                    cursor: 'pointer',
+                    minWidth: '80px'
+                  }}
+                >
+                  <option value={5}>5</option>
+                  <option value={10}>10</option>
+                  <option value={20}>20</option>
+                  <option value={50}>50</option>
+                  <option value={100}>100</option>
+                </select>
+                <span style={{ 
+                  fontSize: '0.85em', 
+                  color: '#6c757d' 
+                }}>
+                  results
+                </span>
+              </div>
+            )}
           </div>
 
           <div className="search-form">

@@ -1083,6 +1083,7 @@ async def semantic_search(q: str, limit: int = 10):
         }
         
         top_results = []
+        scores = []
         for doc in results:
             top_results.append(DocumentResponse(
                 id=str(doc["_id"]),
@@ -1090,13 +1091,24 @@ async def semantic_search(q: str, limit: int = 10):
                 body=doc["body"],
                 tags=doc["tags"]
             ))
+            # Extract vector search score if available
+            if "score" in doc:
+                scores.append(round(doc["score"], 4))
         
         execution_time = (time.time() - start_time) * 1000
         
         mongodb_op = MongoDBOperation(
             operation="aggregate",
             query={"aggregate": pipeline},
-            result={"count": len(top_results)},
+            result={
+                "count": len(top_results),
+                "documents_found": len(top_results),
+                "vector_search_scores": scores if scores else None,
+                "query": q,
+                "search_type": "vector_search",
+                "index_used": "vector_index",
+                "embedding_dimensions": len(query_embedding)
+            },
             execution_time_ms=round(execution_time, 2),
             documents_affected=len(top_results),
             index_used=vector_index_info
@@ -1135,6 +1147,21 @@ async def semantic_search(q: str, limit: int = 10):
         
         if not all_docs:
             execution_time = (time.time() - start_time) * 1000
+            mongodb_op = MongoDBOperation(
+                operation="find",
+                query=fallback_query,
+                result={
+                    "count": 0,
+                    "documents_found": 0,
+                    "query": q,
+                    "search_type": "vector_fallback",
+                    "index_used": "Python cosine similarity (no vector index)",
+                    "message": "No documents with embeddings found in database"
+                },
+                execution_time_ms=round(execution_time, 2),
+                documents_affected=0,
+                index_used={"note": "No vector index available, using Python similarity"}
+            )
             return SearchResponse(
                 query=q, 
                 results=[], 
@@ -1142,7 +1169,8 @@ async def semantic_search(q: str, limit: int = 10):
                 mongodb_query=fallback_query,
                 execution_time_ms=round(execution_time, 2),
                 search_type="vector_fallback",
-                index_used={"note": "No vector index available, using Python similarity"}
+                index_used={"note": "No vector index available, using Python similarity"},
+                mongodb_operation=mongodb_op
             )
         
         # Calculate cosine similarity manually as fallback
@@ -1159,6 +1187,7 @@ async def semantic_search(q: str, limit: int = 10):
         
         # Take top results
         top_results = []
+        similarity_scores = []
         for doc, score in results_with_scores[:limit]:
             top_results.append(DocumentResponse(
                 id=str(doc["_id"]),
@@ -1166,13 +1195,23 @@ async def semantic_search(q: str, limit: int = 10):
                 body=doc["body"],
                 tags=doc["tags"]
             ))
+            similarity_scores.append(round(score, 4))
         
         execution_time = (time.time() - start_time) * 1000
         
         mongodb_op = MongoDBOperation(
             operation="find + Python similarity",
             query=fallback_query,
-            result={"count": len(top_results)},
+            result={
+                "count": len(top_results),
+                "documents_found": len(top_results),
+                "similarity_scores": similarity_scores,
+                "query": q,
+                "search_type": "vector_fallback",
+                "index_used": "Python cosine similarity (no vector index)",
+                "total_documents_searched": len(all_docs),
+                "embedding_dimensions": len(query_embedding)
+            },
             execution_time_ms=round(execution_time, 2),
             documents_affected=len(top_results),
             index_used={"note": "No vector index available, using Python similarity"}
@@ -1279,6 +1318,7 @@ async def search_documents(q: str):
         # Execute Atlas Search aggregation
         results_cursor = documents.aggregate(pipeline)
         results = []
+        scores = []
         for doc in results_cursor:
             results.append(DocumentResponse(
                 id=str(doc["_id"]),
@@ -1286,13 +1326,23 @@ async def search_documents(q: str):
                 body=doc["body"],
                 tags=doc["tags"]
             ))
+            # Extract score if available
+            if "score" in doc:
+                scores.append(round(doc["score"], 4))
         
         execution_time = (time.time() - start_time) * 1000  # Convert to ms
         
         mongodb_op = MongoDBOperation(
             operation="aggregate",
             query={"aggregate": pipeline},
-            result={"count": len(results)},
+            result={
+                "count": len(results),
+                "documents_found": len(results),
+                "search_scores": scores if scores else None,
+                "query": q,
+                "search_type": "full_text_search",
+                "index_used": "default (Atlas Search)"
+            },
             execution_time_ms=round(execution_time, 2),
             documents_affected=len(results),
             index_used=index_info
@@ -1330,6 +1380,7 @@ async def search_documents(q: str):
         ).sort([("score", {"$meta": "textScore"})])
         
         results = []
+        scores = []
         for doc in cursor:
             results.append(DocumentResponse(
                 id=str(doc["_id"]),
@@ -1337,13 +1388,23 @@ async def search_documents(q: str):
                 body=doc["body"],
                 tags=doc["tags"]
             ))
+            # Extract score if available
+            if "score" in doc:
+                scores.append(round(doc["score"], 4))
         
         execution_time = (time.time() - start_time) * 1000
         
         mongodb_op = MongoDBOperation(
             operation="find",
             query=fallback_query,
-            result={"count": len(results)},
+            result={
+                "count": len(results),
+                "documents_found": len(results),
+                "search_scores": scores if scores else None,
+                "query": q,
+                "search_type": "text_fallback",
+                "index_used": "text index (fallback)"
+            },
             execution_time_ms=round(execution_time, 2),
             documents_affected=len(results),
             index_used=fallback_index
