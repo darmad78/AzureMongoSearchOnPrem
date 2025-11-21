@@ -818,17 +818,30 @@ async def create_document_from_audio(
         
         # Step 2: Transcribe audio to text
         step_start = time.time()
+        print(f"🎤 Starting Whisper transcription for file: {audio.filename}")
+        print(f"📁 Temp file path: {temp_path}")
+        print(f"📊 File size: {os.path.getsize(temp_path) / 1024 / 1024:.2f} MB")
+        
         transcribe_options = {}
         if language:
-            print(f"Using user-specified language: {language}")
+            print(f"🌍 Using user-specified language: {language}")
             transcribe_options['language'] = language
         else:
-            print("Auto-detecting language")
+            print("🌍 Auto-detecting language")
         
-        transcription_result = whisper_model.transcribe(temp_path, **transcribe_options)
-        transcribed_text = transcription_result["text"]
-        detected_language = transcription_result.get("language", language or "unknown")
-        print(f"Transcription complete. Detected language: {detected_language}, Text preview: {transcribed_text[:100]}")
+        try:
+            print("⏳ Calling Whisper transcribe (this may take a while for large files)...")
+            transcription_result = whisper_model.transcribe(temp_path, **transcribe_options)
+            transcribed_text = transcription_result["text"]
+            detected_language = transcription_result.get("language", language or "unknown")
+            transcription_time = (time.time() - step_start)
+            print(f"✅ Transcription complete in {transcription_time:.2f}s. Detected language: {detected_language}")
+            print(f"📝 Text preview: {transcribed_text[:100]}")
+        except Exception as transcribe_error:
+            print(f"❌ Whisper transcription failed: {transcribe_error}")
+            import traceback
+            print(f"📋 Traceback:\n{traceback.format_exc()}")
+            raise
         
         workflow_steps.append({
             "step": 2,

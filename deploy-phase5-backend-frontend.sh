@@ -293,11 +293,11 @@ spec:
           failureThreshold: 3
         resources:
           requests:
-            cpu: "500m"
-            memory: "1Gi"
-          limits:
             cpu: "2"
             memory: "4Gi"
+          limits:
+            cpu: "16"  # Use all 16 vCPUs available on e2-standard-16
+            memory: "32Gi"  # Use significant portion of 64GB available
 ---
 apiVersion: v1
 kind: Service
