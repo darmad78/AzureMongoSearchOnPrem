@@ -70,8 +70,8 @@ spec:
   selector:
     app: search-backend
   ports:
-  - port: 8000
-    targetPort: 8000
+  - port: 8888
+    targetPort: 8888
   type: NodePort
 ---
 apiVersion: apps/v1
@@ -132,6 +132,6 @@ spec:
   selector:
     app: search-frontend
   ports:
-  - port: 3000
-    targetPort: 3000
+  - port: 5173
+    targetPort: 5173
   type: NodePort
