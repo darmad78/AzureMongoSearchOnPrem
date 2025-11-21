@@ -2,7 +2,7 @@ from fastapi import FastAPI, HTTPException, UploadFile, File, Form
 from fastapi.middleware.cors import CORSMiddleware
 from pymongo import MongoClient
 from pydantic import BaseModel
-from typing import List, Optional, Tuple
+from typing import List, Optional, Tuple, Dict, Any
 import os
 import whisper
 from sentence_transformers import SentenceTransformer
@@ -12,6 +12,15 @@ import shutil
 from openai import OpenAI
 import requests
 import json
+import subprocess
+import sys
+import time
+import platform
+try:
+    import psutil
+    PSUTIL_AVAILABLE = True
+except ImportError:
+    PSUTIL_AVAILABLE = False
 
 app = FastAPI(title="Document Search API", version="1.0.0")
 
@@ -151,9 +160,365 @@ class ChatResponse(BaseModel):
     model_used: str
     mongodb_operation: Optional[MongoDBOperation] = None
 
+# System Health Response Models
+class MongoDBInfo(BaseModel):
+    status: str
+    version: Optional[str] = None
+    replica_set: Optional[str] = None
+    databases: Optional[List[str]] = None
+    collections: Optional[Dict[str, int]] = None
+    total_documents: Optional[int] = None
+    storage_size_mb: Optional[float] = None
+    connection_string: Optional[str] = None
+    vector_index_exists: Optional[bool] = None
+    vector_index_status: Optional[str] = None
+
+class OllamaInfo(BaseModel):
+    status: str
+    version: Optional[str] = None
+    url: Optional[str] = None
+    model: Optional[str] = None
+    available_models: Optional[List[str]] = None
+    memory_usage_mb: Optional[float] = None
+
+class BackendInfo(BaseModel):
+    status: str
+    version: str
+    python_version: str
+    whisper_model: str
+    embedding_model: str
+    llm_provider: str
+    memory_usage_mb: Optional[float] = None
+
+class FrontendInfo(BaseModel):
+    build_time: Optional[str] = None
+    api_url: Optional[str] = None
+
+class KubernetesInfo(BaseModel):
+    available: bool
+    namespace: Optional[str] = None
+    pods: Optional[List[Dict[str, Any]]] = None
+    services: Optional[List[Dict[str, Any]]] = None
+    deployments: Optional[List[Dict[str, Any]]] = None
+
+class OpsManagerInfo(BaseModel):
+    status: str
+    version: Optional[str] = None
+    url: Optional[str] = None
+    accessible: bool = False
+
+class SystemResources(BaseModel):
+    cpu_percent: Optional[float] = None
+    memory_total_mb: Optional[float] = None
+    memory_used_mb: Optional[float] = None
+    memory_percent: Optional[float] = None
+    disk_total_gb: Optional[float] = None
+    disk_used_gb: Optional[float] = None
+    disk_percent: Optional[float] = None
+
+class SystemHealthResponse(BaseModel):
+    timestamp: str
+    mongodb: MongoDBInfo
+    ollama: OllamaInfo
+    backend: BackendInfo
+    frontend: Optional[FrontendInfo] = None
+    kubernetes: Optional[KubernetesInfo] = None
+    ops_manager: Optional[OpsManagerInfo] = None
+    system_resources: Optional[SystemResources] = None
+
+# Helper functions for system information
+def check_vector_index_exists() -> Tuple[bool, Optional[str]]:
+    """Check if the vector search index exists and return its status"""
+    try:
+        # Try to list search indexes
+        indexes = list(documents.list_search_indexes())
+        for idx in indexes:
+            if idx.get("name") == "vector_index":
+                status = idx.get("status", "unknown")
+                # Index exists, return status (even if BUILDING, it exists)
+                return True, status
+        return False, None
+    except Exception as e:
+        # If list_search_indexes fails, Search might not be enabled
+        error_msg = str(e)
+        if "SearchNotEnabled" in error_msg or "31082" in error_msg or "not found" in error_msg.lower():
+            return False, "SearchNotEnabled"
+        # Other errors - assume index doesn't exist
+        return False, None
+
+def get_mongodb_info() -> MongoDBInfo:
+    """Get MongoDB server information"""
+    try:
+        # Get server version
+        build_info = db.command({"buildInfo": 1})
+        version = build_info.get("version", "Unknown")
+        
+        # Get replica set status
+        replica_set = None
+        try:
+            rs_status = db.command({"replSetGetStatus": 1})
+            replica_set = rs_status.get("set", "Unknown")
+        except:
+            pass
+        
+        # Get database list
+        databases = client.list_database_names()
+        
+        # Get collection stats
+        collections = {}
+        total_docs = 0
+        storage_size = 0.0
+        
+        for db_name in databases:
+            db_obj = client[db_name]
+            db_stats = db_obj.command("dbStats")
+            collections[db_name] = len(db_obj.list_collection_names())
+            total_docs += db_stats.get("objects", 0)
+            storage_size += db_stats.get("dataSize", 0) / (1024 * 1024)  # Convert to MB
+        
+        # Check if vector index exists
+        vector_index_exists, vector_index_status = check_vector_index_exists()
+        
+        return MongoDBInfo(
+            status="connected",
+            version=version,
+            replica_set=replica_set,
+            databases=databases,
+            collections=collections,
+            total_documents=total_docs,
+            storage_size_mb=round(storage_size, 2),
+            connection_string=MONGODB_URL.split("@")[-1] if "@" in MONGODB_URL else "localhost:27017",
+            vector_index_exists=vector_index_exists,
+            vector_index_status=vector_index_status
+        )
+    except Exception as e:
+        return MongoDBInfo(
+            status="error",
+            connection_string=str(e)[:100]
+        )
+
+def get_ollama_info() -> OllamaInfo:
+    """Get Ollama service information"""
+    try:
+        # Get version
+        version_response = requests.get(f"{OLLAMA_URL}/api/version", timeout=5)
+        version_data = version_response.json() if version_response.status_code == 200 else {}
+        version = version_data.get("version", "Unknown")
+        
+        # Get available models
+        models = []
+        memory_usage = None
+        try:
+            tags_response = requests.get(f"{OLLAMA_URL}/api/tags", timeout=5)
+            if tags_response.status_code == 200:
+                tags_data = tags_response.json()
+                models = [model.get("name", "") for model in tags_data.get("models", [])]
+        except:
+            pass
+        
+        return OllamaInfo(
+            status="healthy" if version_response.status_code == 200 else "unhealthy",
+            version=version,
+            url=OLLAMA_URL,
+            model=OLLAMA_MODEL,
+            available_models=models,
+            memory_usage_mb=memory_usage
+        )
+    except Exception as e:
+        return OllamaInfo(
+            status="error",
+            url=OLLAMA_URL,
+            model=OLLAMA_MODEL,
+            available_models=[]
+        )
+
+def get_kubernetes_info() -> KubernetesInfo:
+    """Get Kubernetes cluster information"""
+    namespace = os.getenv("NAMESPACE", "mongodb")
+    try:
+        # Check if kubectl is available
+        result = subprocess.run(
+            ["kubectl", "version", "--client", "--short"],
+            capture_output=True,
+            timeout=5
+        )
+        if result.returncode != 0:
+            return KubernetesInfo(available=False)
+        
+        pods = []
+        services = []
+        deployments = []
+        
+        try:
+            # Get pods
+            pod_result = subprocess.run(
+                ["kubectl", "get", "pods", "-n", namespace, "-o", "json"],
+                capture_output=True,
+                timeout=10
+            )
+            if pod_result.returncode == 0:
+                pod_data = json.loads(pod_result.stdout)
+                for pod in pod_data.get("items", []):
+                    pods.append({
+                        "name": pod["metadata"]["name"],
+                        "status": pod["status"].get("phase", "Unknown"),
+                        "ready": f"{len([c for c in pod['status'].get('containerStatuses', []) if c.get('ready', False)])}/{len(pod['status'].get('containerStatuses', []))}"
+                    })
+        except:
+            pass
+        
+        try:
+            # Get services
+            svc_result = subprocess.run(
+                ["kubectl", "get", "svc", "-n", namespace, "-o", "json"],
+                capture_output=True,
+                timeout=10
+            )
+            if svc_result.returncode == 0:
+                svc_data = json.loads(svc_result.stdout)
+                for svc in svc_data.get("items", []):
+                    services.append({
+                        "name": svc["metadata"]["name"],
+                        "type": svc["spec"].get("type", "ClusterIP"),
+                        "ports": [f"{p.get('port')}/{p.get('protocol', 'TCP')}" for p in svc["spec"].get("ports", [])]
+                    })
+        except:
+            pass
+        
+        try:
+            # Get deployments
+            dep_result = subprocess.run(
+                ["kubectl", "get", "deployments", "-n", namespace, "-o", "json"],
+                capture_output=True,
+                timeout=10
+            )
+            if dep_result.returncode == 0:
+                dep_data = json.loads(dep_result.stdout)
+                for dep in dep_data.get("items", []):
+                    deployments.append({
+                        "name": dep["metadata"]["name"],
+                        "replicas": dep["spec"].get("replicas", 0),
+                        "ready": dep["status"].get("readyReplicas", 0)
+                    })
+        except:
+            pass
+        
+        return KubernetesInfo(
+            available=True,
+            namespace=namespace,
+            pods=pods,
+            services=services,
+            deployments=deployments
+        )
+    except Exception:
+        return KubernetesInfo(available=False)
+
+def get_system_resources() -> SystemResources:
+    """Get system resource usage"""
+    if not PSUTIL_AVAILABLE:
+        return SystemResources()
+    
+    try:
+        cpu_percent = psutil.cpu_percent(interval=1)
+        memory = psutil.virtual_memory()
+        disk = psutil.disk_usage('/')
+        
+        return SystemResources(
+            cpu_percent=round(cpu_percent, 2),
+            memory_total_mb=round(memory.total / (1024 * 1024), 2),
+            memory_used_mb=round(memory.used / (1024 * 1024), 2),
+            memory_percent=round(memory.percent, 2),
+            disk_total_gb=round(disk.total / (1024 * 1024 * 1024), 2),
+            disk_used_gb=round(disk.used / (1024 * 1024 * 1024), 2),
+            disk_percent=round(disk.percent, 2)
+        )
+    except Exception:
+        return SystemResources()
+
+def get_ops_manager_info() -> OpsManagerInfo:
+    """Get Ops Manager information"""
+    ops_url = os.getenv("OPS_MANAGER_URL", "http://ops-manager-service.mongodb.svc.cluster.local:8080")
+    try:
+        response = requests.get(f"{ops_url}/api/public/v1.0/version", timeout=5)
+        accessible = response.status_code == 200
+        version = None
+        if accessible:
+            try:
+                version_data = response.json()
+                version = version_data.get("version", "Unknown")
+            except:
+                pass
+        
+        return OpsManagerInfo(
+            status="accessible" if accessible else "not_accessible",
+            url=ops_url,
+            accessible=accessible,
+            version=version
+        )
+    except Exception:
+        return OpsManagerInfo(
+            status="not_accessible",
+            url=ops_url,
+            accessible=False
+        )
+
 @app.get("/")
 async def root():
     return {"message": "Document Search API is running"}
+
+@app.get("/health/system", response_model=SystemHealthResponse)
+async def get_system_health():
+    """Get comprehensive system health and architecture information"""
+    # Get MongoDB info
+    mongodb_info = get_mongodb_info()
+    
+    # Get Ollama info
+    ollama_info = get_ollama_info()
+    
+    # Get backend info
+    backend_memory = None
+    if PSUTIL_AVAILABLE:
+        try:
+            process = psutil.Process()
+            backend_memory = round(process.memory_info().rss / (1024 * 1024), 2)
+        except:
+            pass
+    
+    backend_info = BackendInfo(
+        status="healthy",
+        version="1.0.0",
+        python_version=f"{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}",
+        whisper_model="base",
+        embedding_model="all-MiniLM-L6-v2",
+        llm_provider=LLM_PROVIDER,
+        memory_usage_mb=backend_memory
+    )
+    
+    # Get frontend info (from build time if available)
+    frontend_info = FrontendInfo(
+        build_time=os.getenv("FRONTEND_BUILD_TIME", None),
+        api_url=os.getenv("API_URL", None)
+    )
+    
+    # Get Kubernetes info
+    kubernetes_info = get_kubernetes_info()
+    
+    # Get Ops Manager info
+    ops_manager_info = get_ops_manager_info()
+    
+    # Get system resources
+    system_resources = get_system_resources()
+    
+    return SystemHealthResponse(
+        timestamp=time.strftime("%Y-%m-%d %H:%M:%S UTC", time.gmtime()),
+        mongodb=mongodb_info,
+        ollama=ollama_info,
+        backend=backend_info,
+        frontend=frontend_info,
+        kubernetes=kubernetes_info if kubernetes_info.available else None,
+        ops_manager=ops_manager_info if ops_manager_info.accessible else None,
+        system_resources=system_resources
+    )
 
 @app.get("/health/ollama")
 async def check_ollama_health():
@@ -479,7 +844,15 @@ async def semantic_search(q: str, limit: int = 10):
     # Generate embedding for query
     query_embedding = embedding_model.encode(q).tolist()
     
+    # Check if vector index exists before attempting to use it
+    vector_index_available, vector_index_status = check_vector_index_exists()
+    
+    if not vector_index_available:
+        print(f"⚠️  Vector search index 'vector_index' not found or not ready (status: {vector_index_status}). Using Python similarity fallback.")
+    
     try:
+        if not vector_index_available:
+            raise Exception("Vector index not available")
         # Use MongoDB's native $vectorSearch aggregation (Enterprise feature)
         # Show sample of embedding for display (first 5 values)
         embedding_display = query_embedding[:5] + [f"... ({len(query_embedding)} dimensions total)"]
@@ -961,8 +1334,17 @@ async def chat_with_documents(chat_request: ChatRequest):
     # Generate embedding for query
     query_embedding = embedding_model.encode(question).tolist()
     
+    # Check if vector index exists before attempting to use it
+    vector_index_available, vector_index_status = check_vector_index_exists()
+    
+    if not vector_index_available:
+        print(f"⚠️  Vector search index 'vector_index' not found or not ready for RAG (status: {vector_index_status}). Using Python similarity fallback.")
+    
     # Try MongoDB native $vectorSearch first
     try:
+        if not vector_index_available:
+            raise Exception("Vector index not available")
+        
         # Vector search aggregation pipeline
         pipeline = [
             {

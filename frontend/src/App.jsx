@@ -70,14 +70,12 @@ function App() {
   });
   const [isLoadingDocuments, setIsLoadingDocuments] = useState(true);
   
-  // Health check state
-  const [healthData, setHealthData] = useState({
-    backend: null,
-    ollama: null,
-    mongodb: null,
-    isLoading: false,
-    lastChecked: null
-  });
+  // System health state
+  const [systemHealth, setSystemHealth] = useState(null);
+  const [isLoadingHealth, setIsLoadingHealth] = useState(false);
+  const [lastHealthCheck, setLastHealthCheck] = useState(null);
+  const [autoRefresh, setAutoRefresh] = useState(false);
+  const [refreshInterval, setRefreshInterval] = useState(30); // seconds
   
   const toggleSection = (section) => {
     setExpandedSections(prev => ({
@@ -854,83 +852,34 @@ function App() {
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [chatHistory]);
 
-  // Health check function
-  const checkHealth = async () => {
-    setHealthData(prev => ({ ...prev, isLoading: true }));
-    const health = {
-      backend: null,
-      ollama: null,
-      mongodb: null,
-      lastChecked: new Date().toISOString()
-    };
-
-    // Check backend API
+  // System health check function
+  const checkSystemHealth = async () => {
+    setIsLoadingHealth(true);
     try {
-      const backendResponse = await fetch(`${API_URL}/`);
-      health.backend = {
-        status: backendResponse.ok ? 'healthy' : 'unhealthy',
-        message: backendResponse.ok ? 'Backend API is running' : `HTTP ${backendResponse.status}`,
-        timestamp: new Date().toISOString()
-      };
-    } catch (error) {
-      health.backend = {
-        status: 'error',
-        message: `Cannot connect to backend: ${error.message}`,
-        timestamp: new Date().toISOString()
-      };
-    }
-
-    // Check Ollama
-    try {
-      const ollamaResponse = await fetch(`${API_URL}/health/ollama`);
-      const ollamaData = await ollamaResponse.json();
-      health.ollama = {
-        status: ollamaData.status || 'unknown',
-        message: ollamaData.message || 'Unknown status',
-        model_available: ollamaData.model_available || false,
-        ollama_url: ollamaData.ollama_url || 'N/A',
-        ollama_model: ollamaData.ollama_model || 'N/A',
-        timestamp: new Date().toISOString()
-      };
-    } catch (error) {
-      health.ollama = {
-        status: 'error',
-        message: `Cannot check Ollama health: ${error.message}`,
-        timestamp: new Date().toISOString()
-      };
-    }
-
-    // Check MongoDB (by trying to fetch documents count)
-    try {
-      const mongoResponse = await fetch(`${API_URL}/documents`);
-      if (mongoResponse.ok) {
-        const docs = await mongoResponse.json();
-        health.mongodb = {
-          status: 'healthy',
-          message: `Connected to MongoDB. ${docs.length} documents found.`,
-          document_count: docs.length,
-          timestamp: new Date().toISOString()
-        };
+      const response = await fetch(`${API_URL}/health/system`);
+      if (response.ok) {
+        const data = await response.json();
+        setSystemHealth(data);
+        setLastHealthCheck(new Date().toISOString());
       } else {
-        health.mongodb = {
-          status: 'unhealthy',
-          message: `MongoDB connection issue: HTTP ${mongoResponse.status}`,
-          timestamp: new Date().toISOString()
-        };
+        console.error('Failed to fetch system health:', response.status);
       }
     } catch (error) {
-      health.mongodb = {
-        status: 'error',
-        message: `Cannot connect to MongoDB: ${error.message}`,
-        timestamp: new Date().toISOString()
-      };
+      console.error('Error fetching system health:', error);
+    } finally {
+      setIsLoadingHealth(false);
     }
-
-    setHealthData({
-      ...health,
-      isLoading: false
-    });
   };
+
+  // Auto-refresh effect
+  useEffect(() => {
+    if (autoRefresh && expandedSections.health) {
+      const interval = setInterval(() => {
+        checkSystemHealth();
+      }, refreshInterval * 1000);
+      return () => clearInterval(interval);
+    }
+  }, [autoRefresh, refreshInterval, expandedSections.health]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     fetchDocuments();
@@ -946,8 +895,8 @@ function App() {
         <button 
           onClick={() => {
             toggleSection('health');
-            if (!expandedSections.health) {
-              checkHealth();
+            if (!expandedSections.health && !isLoadingHealth) {
+              checkSystemHealth();
             }
           }}
           style={{
@@ -964,7 +913,7 @@ function App() {
             fontWeight: 'bold'
           }}
         >
-          {expandedSections.health ? '🟢 Health' : '⚕️ Health Check'}
+          {expandedSections.health ? '🟢 Architecture' : '🏗️ Architecture & Health'}
         </button>
       </header>
 
@@ -1443,189 +1392,484 @@ function App() {
         <section className="form-section collapsible-section">
           <h2 className="collapsible-header" onClick={() => {
             toggleSection('health');
-            if (!expandedSections.health && !healthData.isLoading) {
-              checkHealth();
+            if (!expandedSections.health && !isLoadingHealth) {
+              checkSystemHealth();
             }
           }}>
             <span className="expand-icon">{expandedSections.health ? '▼' : '▶'}</span>
-            ⚕️ System Health
+            🏗️ Architecture & System Health
           </h2>
           {expandedSections.health && (
             <div className="collapsible-content">
-              <div style={{ marginBottom: '20px' }}>
+              {/* Controls */}
+              <div style={{ 
+                marginBottom: '20px', 
+                display: 'flex', 
+                alignItems: 'center', 
+                gap: '15px',
+                flexWrap: 'wrap'
+              }}>
                 <button 
-                  onClick={checkHealth}
-                  disabled={healthData.isLoading}
+                  onClick={checkSystemHealth}
+                  disabled={isLoadingHealth}
                   style={{
                     padding: '10px 20px',
                     backgroundColor: '#007bff',
                     color: 'white',
                     border: 'none',
                     borderRadius: '5px',
-                    cursor: healthData.isLoading ? 'not-allowed' : 'pointer',
+                    cursor: isLoadingHealth ? 'not-allowed' : 'pointer',
                     fontSize: '14px',
                     fontWeight: 'bold',
-                    opacity: healthData.isLoading ? 0.6 : 1
+                    opacity: isLoadingHealth ? 0.6 : 1
                   }}
                 >
-                  {healthData.isLoading ? '⏳ Checking...' : '🔄 Refresh Health Status'}
+                  {isLoadingHealth ? '⏳ Loading...' : '🔄 Refresh'}
                 </button>
-                {healthData.lastChecked && (
-                  <span style={{ marginLeft: '15px', color: '#666', fontSize: '0.9em' }}>
-                    Last checked: {new Date(healthData.lastChecked).toLocaleString()}
+                
+                <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer' }}>
+                  <input
+                    type="checkbox"
+                    checked={autoRefresh}
+                    onChange={(e) => setAutoRefresh(e.target.checked)}
+                    style={{ cursor: 'pointer' }}
+                  />
+                  <span>Auto-refresh</span>
+                </label>
+                
+                {autoRefresh && (
+                  <select
+                    value={refreshInterval}
+                    onChange={(e) => setRefreshInterval(Number(e.target.value))}
+                    style={{ padding: '5px 10px', borderRadius: '4px', border: '1px solid #ccc' }}
+                  >
+                    <option value={5}>Every 5s</option>
+                    <option value={10}>Every 10s</option>
+                    <option value={30}>Every 30s</option>
+                    <option value={60}>Every 1m</option>
+                  </select>
+                )}
+                
+                {lastHealthCheck && (
+                  <span style={{ color: '#666', fontSize: '0.9em' }}>
+                    Last updated: {new Date(lastHealthCheck).toLocaleString()}
+                  </span>
+                )}
+                
+                {systemHealth && (
+                  <span style={{ color: '#666', fontSize: '0.9em' }}>
+                    Timestamp: {systemHealth.timestamp}
                   </span>
                 )}
               </div>
 
-              {healthData.isLoading && !healthData.backend && (
-                <div style={{ padding: '20px', textAlign: 'center' }}>
-                  <p>⏳ Checking system health...</p>
+              {isLoadingHealth && !systemHealth && (
+                <div style={{ padding: '40px', textAlign: 'center' }}>
+                  <p>⏳ Loading system architecture information...</p>
                 </div>
               )}
 
-              {/* Backend Health */}
-              <div style={{
-                marginBottom: '20px',
-                padding: '15px',
-                backgroundColor: '#f8f9fa',
-                border: '1px solid #dee2e6',
-                borderRadius: '8px'
-              }}>
-                <h3 style={{ marginTop: 0, display: 'flex', alignItems: 'center', gap: '10px' }}>
-                  <span style={{
-                    fontSize: '20px',
-                    color: healthData.backend?.status === 'healthy' ? '#28a745' : 
-                           healthData.backend?.status === 'error' ? '#dc3545' : '#ffc107'
-                  }}>
-                    {healthData.backend?.status === 'healthy' ? '🟢' : 
-                     healthData.backend?.status === 'error' ? '🔴' : '🟡'}
-                  </span>
-                  Backend API
-                </h3>
-                {healthData.backend ? (
-                  <div>
-                    <p><strong>Status:</strong> <span style={{
-                      color: healthData.backend.status === 'healthy' ? '#28a745' : 
-                             healthData.backend.status === 'error' ? '#dc3545' : '#ffc107',
-                      fontWeight: 'bold'
-                    }}>{healthData.backend.status.toUpperCase()}</span></p>
-                    <p><strong>Message:</strong> {healthData.backend.message}</p>
-                    <p style={{ fontSize: '0.85em', color: '#666' }}>
-                      API URL: {API_URL}
-                    </p>
-                  </div>
-                ) : (
-                  <p>Not checked yet</p>
-                )}
-              </div>
-
-              {/* Ollama Health */}
-              <div style={{
-                marginBottom: '20px',
-                padding: '15px',
-                backgroundColor: '#f8f9fa',
-                border: '1px solid #dee2e6',
-                borderRadius: '8px'
-              }}>
-                <h3 style={{ marginTop: 0, display: 'flex', alignItems: 'center', gap: '10px' }}>
-                  <span style={{
-                    fontSize: '20px',
-                    color: healthData.ollama?.status === 'healthy' ? '#28a745' : 
-                           healthData.ollama?.status === 'error' || healthData.ollama?.status === 'unhealthy' ? '#dc3545' : '#ffc107'
-                  }}>
-                    {healthData.ollama?.status === 'healthy' ? '🟢' : 
-                     healthData.ollama?.status === 'error' || healthData.ollama?.status === 'unhealthy' ? '🔴' : '🟡'}
-                  </span>
-                  Ollama LLM Service
-                </h3>
-                {healthData.ollama ? (
-                  <div>
-                    <p><strong>Status:</strong> <span style={{
-                      color: healthData.ollama.status === 'healthy' ? '#28a745' : 
-                             healthData.ollama.status === 'error' || healthData.ollama.status === 'unhealthy' ? '#dc3545' : '#ffc107',
-                      fontWeight: 'bold'
-                    }}>{healthData.ollama.status.toUpperCase()}</span></p>
-                    <p><strong>Message:</strong> {healthData.ollama.message}</p>
-                    {healthData.ollama.ollama_url && (
-                      <p><strong>Ollama URL:</strong> {healthData.ollama.ollama_url}</p>
-                    )}
-                    {healthData.ollama.ollama_model && (
-                      <p><strong>Model:</strong> {healthData.ollama.ollama_model}</p>
-                    )}
-                    <p><strong>Model Available:</strong> 
-                      <span style={{
-                        color: healthData.ollama.model_available ? '#28a745' : '#dc3545',
-                        fontWeight: 'bold',
-                        marginLeft: '5px'
+              {systemHealth && (
+                <>
+                  {/* System Resources */}
+                  {systemHealth.system_resources && (
+                    <div style={{
+                      marginBottom: '25px',
+                      padding: '20px',
+                      backgroundColor: '#e7f3ff',
+                      border: '2px solid #007bff',
+                      borderRadius: '8px'
+                    }}>
+                      <h3 style={{ marginTop: 0, marginBottom: '15px', color: '#007bff' }}>
+                        📊 System Resources
+                      </h3>
+                      <div style={{ 
+                        display: 'grid', 
+                        gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', 
+                        gap: '15px' 
                       }}>
-                        {healthData.ollama.model_available ? '✅ Yes' : '❌ No'}
-                      </span>
-                    </p>
-                    {!healthData.ollama.model_available && healthData.ollama.ollama_model && (
-                      <div style={{
-                        marginTop: '10px',
-                        padding: '10px',
-                        backgroundColor: '#fff3cd',
-                        border: '1px solid #ffc107',
-                        borderRadius: '5px',
-                        fontSize: '0.9em'
-                      }}>
-                        <strong>⚠️ Model not available!</strong>
-                        <p style={{ margin: '5px 0 0 0' }}>
-                          Pull the model with:
-                        </p>
-                        <code style={{
-                          display: 'block',
-                          marginTop: '5px',
-                          padding: '5px',
-                          backgroundColor: '#f8f9fa',
-                          borderRadius: '3px'
-                        }}>
-                          kubectl exec &lt;ollama-pod&gt; -n mongodb -- ollama pull {healthData.ollama.ollama_model}
-                        </code>
+                        {systemHealth.system_resources.cpu_percent !== null && (
+                          <div style={{ padding: '10px', backgroundColor: 'white', borderRadius: '6px' }}>
+                            <strong>CPU Usage:</strong>
+                            <div style={{ 
+                              marginTop: '5px',
+                              height: '20px',
+                              backgroundColor: '#e9ecef',
+                              borderRadius: '10px',
+                              overflow: 'hidden'
+                            }}>
+                              <div style={{
+                                height: '100%',
+                                width: `${systemHealth.system_resources.cpu_percent}%`,
+                                backgroundColor: systemHealth.system_resources.cpu_percent > 80 ? '#dc3545' : 
+                                               systemHealth.system_resources.cpu_percent > 60 ? '#ffc107' : '#28a745',
+                                transition: 'width 0.3s'
+                              }}></div>
+                            </div>
+                            <span style={{ fontSize: '0.9em' }}>{systemHealth.system_resources.cpu_percent}%</span>
+                          </div>
+                        )}
+                        
+                        {systemHealth.system_resources.memory_total_mb && (
+                          <div style={{ padding: '10px', backgroundColor: 'white', borderRadius: '6px' }}>
+                            <strong>Memory:</strong>
+                            <div style={{ marginTop: '5px' }}>
+                              <div style={{ fontSize: '0.9em' }}>
+                                {systemHealth.system_resources.memory_used_mb?.toFixed(0)} MB / {systemHealth.system_resources.memory_total_mb.toFixed(0)} MB
+                              </div>
+                              <div style={{ 
+                                marginTop: '5px',
+                                height: '20px',
+                                backgroundColor: '#e9ecef',
+                                borderRadius: '10px',
+                                overflow: 'hidden'
+                              }}>
+                                <div style={{
+                                  height: '100%',
+                                  width: `${systemHealth.system_resources.memory_percent}%`,
+                                  backgroundColor: systemHealth.system_resources.memory_percent > 80 ? '#dc3545' : 
+                                                 systemHealth.system_resources.memory_percent > 60 ? '#ffc107' : '#28a745',
+                                  transition: 'width 0.3s'
+                                }}></div>
+                              </div>
+                              <span style={{ fontSize: '0.9em' }}>{systemHealth.system_resources.memory_percent}%</span>
+                            </div>
+                          </div>
+                        )}
+                        
+                        {systemHealth.system_resources.disk_total_gb && (
+                          <div style={{ padding: '10px', backgroundColor: 'white', borderRadius: '6px' }}>
+                            <strong>Disk Storage:</strong>
+                            <div style={{ marginTop: '5px' }}>
+                              <div style={{ fontSize: '0.9em' }}>
+                                {systemHealth.system_resources.disk_used_gb?.toFixed(2)} GB / {systemHealth.system_resources.disk_total_gb.toFixed(2)} GB
+                              </div>
+                              <div style={{ 
+                                marginTop: '5px',
+                                height: '20px',
+                                backgroundColor: '#e9ecef',
+                                borderRadius: '10px',
+                                overflow: 'hidden'
+                              }}>
+                                <div style={{
+                                  height: '100%',
+                                  width: `${systemHealth.system_resources.disk_percent}%`,
+                                  backgroundColor: systemHealth.system_resources.disk_percent > 80 ? '#dc3545' : 
+                                                 systemHealth.system_resources.disk_percent > 60 ? '#ffc107' : '#28a745',
+                                  transition: 'width 0.3s'
+                                }}></div>
+                              </div>
+                              <span style={{ fontSize: '0.9em' }}>{systemHealth.system_resources.disk_percent}%</span>
+                            </div>
+                          </div>
+                        )}
                       </div>
-                    )}
-                  </div>
-                ) : (
-                  <p>Not checked yet</p>
-                )}
-              </div>
+                    </div>
+                  )}
 
-              {/* MongoDB Health */}
-              <div style={{
-                marginBottom: '20px',
-                padding: '15px',
-                backgroundColor: '#f8f9fa',
-                border: '1px solid #dee2e6',
-                borderRadius: '8px'
-              }}>
-                <h3 style={{ marginTop: 0, display: 'flex', alignItems: 'center', gap: '10px' }}>
-                  <span style={{
-                    fontSize: '20px',
-                    color: healthData.mongodb?.status === 'healthy' ? '#28a745' : 
-                           healthData.mongodb?.status === 'error' ? '#dc3545' : '#ffc107'
+                  {/* MongoDB Section */}
+                  <div style={{
+                    marginBottom: '20px',
+                    padding: '20px',
+                    backgroundColor: '#f8f9fa',
+                    border: '1px solid #dee2e6',
+                    borderRadius: '8px'
                   }}>
-                    {healthData.mongodb?.status === 'healthy' ? '🟢' : 
-                     healthData.mongodb?.status === 'error' ? '🔴' : '🟡'}
-                  </span>
-                  MongoDB Database
-                </h3>
-                {healthData.mongodb ? (
-                  <div>
-                    <p><strong>Status:</strong> <span style={{
-                      color: healthData.mongodb.status === 'healthy' ? '#28a745' : 
-                             healthData.mongodb.status === 'error' ? '#dc3545' : '#ffc107',
-                      fontWeight: 'bold'
-                    }}>{healthData.mongodb.status.toUpperCase()}</span></p>
-                    <p><strong>Message:</strong> {healthData.mongodb.message}</p>
-                    {healthData.mongodb.document_count !== undefined && (
-                      <p><strong>Documents:</strong> {healthData.mongodb.document_count}</p>
+                    <h3 style={{ marginTop: 0, display: 'flex', alignItems: 'center', gap: '10px' }}>
+                      <span style={{ fontSize: '20px' }}>
+                        {systemHealth.mongodb.status === 'connected' ? '🟢' : '🔴'}
+                      </span>
+                      🗄️ MongoDB Database
+                    </h3>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))', gap: '15px', marginTop: '15px' }}>
+                      {systemHealth.mongodb.version && (
+                        <div>
+                          <strong>Version:</strong> {systemHealth.mongodb.version}
+                        </div>
+                      )}
+                      {systemHealth.mongodb.replica_set && (
+                        <div>
+                          <strong>Replica Set:</strong> {systemHealth.mongodb.replica_set}
+                        </div>
+                      )}
+                      {systemHealth.mongodb.connection_string && (
+                        <div>
+                          <strong>Connection:</strong> {systemHealth.mongodb.connection_string}
+                        </div>
+                      )}
+                      {systemHealth.mongodb.total_documents !== null && (
+                        <div>
+                          <strong>Total Documents:</strong> {systemHealth.mongodb.total_documents.toLocaleString()}
+                        </div>
+                      )}
+                      {systemHealth.mongodb.storage_size_mb !== null && (
+                        <div>
+                          <strong>Storage Size:</strong> {systemHealth.mongodb.storage_size_mb.toFixed(2)} MB
+                        </div>
+                      )}
+                      {systemHealth.mongodb.vector_index_exists !== null && (
+                        <div>
+                          <strong>Vector Index:</strong> 
+                          <span style={{
+                            color: systemHealth.mongodb.vector_index_exists ? '#28a745' : '#dc3545',
+                            fontWeight: 'bold',
+                            marginLeft: '5px'
+                          }}>
+                            {systemHealth.mongodb.vector_index_exists ? '✅ Exists' : '❌ Not Found'}
+                          </span>
+                          {systemHealth.mongodb.vector_index_status && (
+                            <span style={{ marginLeft: '10px', fontSize: '0.9em', color: '#666' }}>
+                              ({systemHealth.mongodb.vector_index_status})
+                            </span>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                    {systemHealth.mongodb.databases && systemHealth.mongodb.databases.length > 0 && (
+                      <details style={{ marginTop: '15px' }}>
+                        <summary style={{ cursor: 'pointer', fontWeight: 'bold', marginBottom: '10px' }}>
+                          Databases ({systemHealth.mongodb.databases.length})
+                        </summary>
+                        <div style={{ marginLeft: '20px', marginTop: '10px' }}>
+                          {systemHealth.mongodb.databases.map((db, idx) => (
+                            <div key={idx} style={{ marginBottom: '8px', padding: '8px', backgroundColor: 'white', borderRadius: '4px' }}>
+                              <strong>{db}</strong>
+                              {systemHealth.mongodb.collections && systemHealth.mongodb.collections[db] !== undefined && (
+                                <span style={{ marginLeft: '10px', color: '#666' }}>
+                                  ({systemHealth.mongodb.collections[db]} collections)
+                                </span>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      </details>
                     )}
                   </div>
-                ) : (
-                  <p>Not checked yet</p>
-                )}
-              </div>
+
+                  {/* Backend Section */}
+                  <div style={{
+                    marginBottom: '20px',
+                    padding: '20px',
+                    backgroundColor: '#f8f9fa',
+                    border: '1px solid #dee2e6',
+                    borderRadius: '8px'
+                  }}>
+                    <h3 style={{ marginTop: 0, display: 'flex', alignItems: 'center', gap: '10px' }}>
+                      <span style={{ fontSize: '20px' }}>
+                        {systemHealth.backend.status === 'healthy' ? '🟢' : '🔴'}
+                      </span>
+                      ⚙️ Backend Service
+                    </h3>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '15px', marginTop: '15px' }}>
+                      <div><strong>Version:</strong> {systemHealth.backend.version}</div>
+                      <div><strong>Python:</strong> {systemHealth.backend.python_version}</div>
+                      <div><strong>LLM Provider:</strong> {systemHealth.backend.llm_provider}</div>
+                      <div><strong>Whisper Model:</strong> {systemHealth.backend.whisper_model}</div>
+                      <div><strong>Embedding Model:</strong> {systemHealth.backend.embedding_model}</div>
+                      {systemHealth.backend.memory_usage_mb && (
+                        <div><strong>Memory Usage:</strong> {systemHealth.backend.memory_usage_mb.toFixed(2)} MB</div>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Ollama Section */}
+                  <div style={{
+                    marginBottom: '20px',
+                    padding: '20px',
+                    backgroundColor: '#f8f9fa',
+                    border: '1px solid #dee2e6',
+                    borderRadius: '8px'
+                  }}>
+                    <h3 style={{ marginTop: 0, display: 'flex', alignItems: 'center', gap: '10px' }}>
+                      <span style={{ fontSize: '20px' }}>
+                        {systemHealth.ollama.status === 'healthy' ? '🟢' : systemHealth.ollama.status === 'error' ? '🔴' : '🟡'}
+                      </span>
+                      🤖 Ollama LLM Service
+                    </h3>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '15px', marginTop: '15px' }}>
+                      {systemHealth.ollama.version && (
+                        <div><strong>Version:</strong> {systemHealth.ollama.version}</div>
+                      )}
+                      {systemHealth.ollama.url && (
+                        <div><strong>URL:</strong> {systemHealth.ollama.url}</div>
+                      )}
+                      {systemHealth.ollama.model && (
+                        <div><strong>Model:</strong> {systemHealth.ollama.model}</div>
+                      )}
+                      {systemHealth.ollama.memory_usage_mb && (
+                        <div><strong>Memory Usage:</strong> {systemHealth.ollama.memory_usage_mb.toFixed(2)} MB</div>
+                      )}
+                    </div>
+                    {systemHealth.ollama.available_models && systemHealth.ollama.available_models.length > 0 && (
+                      <details style={{ marginTop: '15px' }}>
+                        <summary style={{ cursor: 'pointer', fontWeight: 'bold', marginBottom: '10px' }}>
+                          Available Models ({systemHealth.ollama.available_models.length})
+                        </summary>
+                        <div style={{ marginLeft: '20px', marginTop: '10px' }}>
+                          {systemHealth.ollama.available_models.map((model, idx) => (
+                            <div key={idx} style={{ 
+                              marginBottom: '5px', 
+                              padding: '5px 10px', 
+                              backgroundColor: 'white', 
+                              borderRadius: '4px',
+                              display: 'inline-block',
+                              marginRight: '10px'
+                            }}>
+                              {model}
+                            </div>
+                          ))}
+                        </div>
+                      </details>
+                    )}
+                  </div>
+
+                  {/* Frontend Section */}
+                  {systemHealth.frontend && (
+                    <div style={{
+                      marginBottom: '20px',
+                      padding: '20px',
+                      backgroundColor: '#f8f9fa',
+                      border: '1px solid #dee2e6',
+                      borderRadius: '8px'
+                    }}>
+                      <h3 style={{ marginTop: 0, display: 'flex', alignItems: 'center', gap: '10px' }}>
+                        <span style={{ fontSize: '20px' }}>🟢</span>
+                        🖥️ Frontend Application
+                      </h3>
+                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '15px', marginTop: '15px' }}>
+                        {systemHealth.frontend.build_time && (
+                          <div><strong>Build Time:</strong> {systemHealth.frontend.build_time}</div>
+                        )}
+                        {systemHealth.frontend.api_url && (
+                          <div><strong>API URL:</strong> {systemHealth.frontend.api_url}</div>
+                        )}
+                        <div><strong>Current API URL:</strong> {API_URL}</div>
+                        <div><strong>Build Time (Local):</strong> {BUILD_TIME}</div>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Kubernetes Section */}
+                  {systemHealth.kubernetes && systemHealth.kubernetes.available && (
+                    <div style={{
+                      marginBottom: '20px',
+                      padding: '20px',
+                      backgroundColor: '#f8f9fa',
+                      border: '1px solid #dee2e6',
+                      borderRadius: '8px'
+                    }}>
+                      <h3 style={{ marginTop: 0, display: 'flex', alignItems: 'center', gap: '10px' }}>
+                        <span style={{ fontSize: '20px' }}>☸️</span>
+                        Kubernetes Cluster
+                      </h3>
+                      <div style={{ marginTop: '15px' }}>
+                        <strong>Namespace:</strong> {systemHealth.kubernetes.namespace || 'default'}
+                      </div>
+                      
+                      {systemHealth.kubernetes.pods && systemHealth.kubernetes.pods.length > 0 && (
+                        <details style={{ marginTop: '15px' }}>
+                          <summary style={{ cursor: 'pointer', fontWeight: 'bold', marginBottom: '10px' }}>
+                            Pods ({systemHealth.kubernetes.pods.length})
+                          </summary>
+                          <div style={{ marginLeft: '20px', marginTop: '10px' }}>
+                            {systemHealth.kubernetes.pods.map((pod, idx) => (
+                              <div key={idx} style={{ 
+                                marginBottom: '8px', 
+                                padding: '10px', 
+                                backgroundColor: 'white', 
+                                borderRadius: '4px',
+                                display: 'flex',
+                                justifyContent: 'space-between',
+                                alignItems: 'center'
+                              }}>
+                                <span><strong>{pod.name}</strong></span>
+                                <span style={{ 
+                                  color: pod.status === 'Running' ? '#28a745' : '#dc3545',
+                                  fontWeight: 'bold'
+                                }}>
+                                  {pod.status} ({pod.ready})
+                                </span>
+                              </div>
+                            ))}
+                          </div>
+                        </details>
+                      )}
+                      
+                      {systemHealth.kubernetes.services && systemHealth.kubernetes.services.length > 0 && (
+                        <details style={{ marginTop: '15px' }}>
+                          <summary style={{ cursor: 'pointer', fontWeight: 'bold', marginBottom: '10px' }}>
+                            Services ({systemHealth.kubernetes.services.length})
+                          </summary>
+                          <div style={{ marginLeft: '20px', marginTop: '10px' }}>
+                            {systemHealth.kubernetes.services.map((svc, idx) => (
+                              <div key={idx} style={{ 
+                                marginBottom: '8px', 
+                                padding: '10px', 
+                                backgroundColor: 'white', 
+                                borderRadius: '4px'
+                              }}>
+                                <strong>{svc.name}</strong> ({svc.type})
+                                {svc.ports && svc.ports.length > 0 && (
+                                  <div style={{ marginTop: '5px', fontSize: '0.9em', color: '#666' }}>
+                                    Ports: {svc.ports.join(', ')}
+                                  </div>
+                                )}
+                              </div>
+                            ))}
+                          </div>
+                        </details>
+                      )}
+                      
+                      {systemHealth.kubernetes.deployments && systemHealth.kubernetes.deployments.length > 0 && (
+                        <details style={{ marginTop: '15px' }}>
+                          <summary style={{ cursor: 'pointer', fontWeight: 'bold', marginBottom: '10px' }}>
+                            Deployments ({systemHealth.kubernetes.deployments.length})
+                          </summary>
+                          <div style={{ marginLeft: '20px', marginTop: '10px' }}>
+                            {systemHealth.kubernetes.deployments.map((dep, idx) => (
+                              <div key={idx} style={{ 
+                                marginBottom: '8px', 
+                                padding: '10px', 
+                                backgroundColor: 'white', 
+                                borderRadius: '4px'
+                              }}>
+                                <strong>{dep.name}</strong>: {dep.ready}/{dep.replicas} ready
+                              </div>
+                            ))}
+                          </div>
+                        </details>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Ops Manager Section */}
+                  {systemHealth.ops_manager && (
+                    <div style={{
+                      marginBottom: '20px',
+                      padding: '20px',
+                      backgroundColor: '#f8f9fa',
+                      border: '1px solid #dee2e6',
+                      borderRadius: '8px'
+                    }}>
+                      <h3 style={{ marginTop: 0, display: 'flex', alignItems: 'center', gap: '10px' }}>
+                        <span style={{ fontSize: '20px' }}>
+                          {systemHealth.ops_manager.accessible ? '🟢' : '🔴'}
+                        </span>
+                        📊 MongoDB Ops Manager
+                      </h3>
+                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '15px', marginTop: '15px' }}>
+                        {systemHealth.ops_manager.version && (
+                          <div><strong>Version:</strong> {systemHealth.ops_manager.version}</div>
+                        )}
+                        {systemHealth.ops_manager.url && (
+                          <div><strong>URL:</strong> {systemHealth.ops_manager.url}</div>
+                        )}
+                        <div><strong>Status:</strong> {systemHealth.ops_manager.accessible ? 'Accessible' : 'Not Accessible'}</div>
+                      </div>
+                    </div>
+                  )}
+                </>
+              )}
             </div>
           )}
         </section>
