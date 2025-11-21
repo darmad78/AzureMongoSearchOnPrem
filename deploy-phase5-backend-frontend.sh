@@ -267,7 +267,7 @@ spec:
         
         
         image: ${BACKEND_IMAGE}
-        imagePullPolicy: IfNotPresent
+        imagePullPolicy: Never
         ports:
         - containerPort: ${BACKEND_PORT}
         envFrom:
