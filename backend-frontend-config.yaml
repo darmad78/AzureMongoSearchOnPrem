@@ -4,9 +4,9 @@ metadata:
   name: backend-config
   namespace: mongodb
 data:
-  MONGODB_URL: "mongodb://appuser:SecureUser456!@mdb-rs-svc.mongodb.svc.cluster.local:27017/searchdb?replicaSet=mdb-rs&authSource=admin&authMechanism=SCRAM-SHA-256"
-  MONGODB_USER: "appuser"
-  MONGODB_PASSWORD: "SecureUser456!"
+  MONGODB_URL: "mongodb://mdb-user:mdb-user-password-CHANGE-ME@mdb-rs-svc.mongodb.svc.cluster.local:27017/searchdb?replicaSet=mdb-rs&authSource=admin&authMechanism=SCRAM-SHA-256"
+  MONGODB_USER: "mdb-user"
+  MONGODB_PASSWORD: "mdb-user-password-CHANGE-ME"
   MONGODB_DB: "searchdb"
   LLM_PROVIDER: "ollama"
   OLLAMA_URL: "http://ollama-svc.mongodb.svc.cluster.local:11434"
