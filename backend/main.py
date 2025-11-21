@@ -68,7 +68,7 @@ client = MongoClient(
     MONGODB_URL,
     serverSelectionTimeoutMS=5000,  # 5 seconds to select server
     connectTimeoutMS=5000,  # 5 seconds to connect
-    socketTimeoutMS=30000,  # 30 seconds for operations
+    socketTimeoutMS=None,  # NO timeout for operations - allow long-running queries
     maxPoolSize=50,  # Limit connection pool size
     retryWrites=True,
     retryReads=True
@@ -987,7 +987,20 @@ async def create_document_from_audio(
             mongodb_operation=mongodb_op
         )
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Audio document creation failed: {str(e)}")
+        import traceback
+        error_trace = traceback.format_exc()
+        print(f"❌ Error in audio document creation: {str(e)}")
+        print(f"📋 Traceback:\n{error_trace}")
+        # Clean up temp file if it exists
+        try:
+            if 'temp_path' in locals() and os.path.exists(temp_path):
+                os.unlink(temp_path)
+        except:
+            pass
+        raise HTTPException(
+            status_code=500, 
+            detail=f"Audio document creation failed: {str(e)}. Check server logs for details."
+        )
 
 @app.post("/search/create-vector-index")
 async def create_vector_search_index():
@@ -1447,7 +1460,7 @@ Answer:""",
                         "num_predict": 500
                     }
                 },
-                timeout=(10, int(os.getenv("OLLAMA_TIMEOUT", "360000")))  # (connect_timeout, read_timeout) - 10s connect, 360000s (6000 min / 100 hours) read timeout
+                timeout=None  # No timeout - allow requests to run indefinitely
             )
             
             # Handle non-200 status codes with better error messages

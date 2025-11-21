@@ -21,6 +21,6 @@ COPY . .
 # Expose port
 EXPOSE 8888
 
-# Run the application
+# Run the application with no timeout limits
 CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8888"]
 
