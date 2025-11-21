@@ -4,7 +4,7 @@ metadata:
   name: backend-config
   namespace: mongodb
 data:
-  MONGODB_URL: "mongodb://appuser:SecureUser456!@mongodb-rs-svc.mongodb.svc.cluster.local:27017/searchdb?replicaSet=mongodb-rs&authSource=admin"
+  MONGODB_URL: "mongodb://appuser:SecureUser456!@mdb-rs-svc.mongodb.svc.cluster.local:27017/searchdb?replicaSet=mdb-rs&authSource=admin"
   MONGODB_USER: "appuser"
   MONGODB_PASSWORD: "SecureUser456!"
   MONGODB_DB: "searchdb"
