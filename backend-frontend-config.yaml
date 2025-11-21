@@ -93,14 +93,14 @@ spec:
       - name: frontend
         image: azuremongosearchonprem-frontend:latest
         ports:
-        - containerPort: 3000
+        - containerPort: 5173
         env:
         - name: REACT_APP_API_URL
           value: "http://search-backend-svc.mongodb.svc.cluster.local:8000"
         readinessProbe:
           httpGet:
             path: /
-            port: 3000
+            port: 5173
           initialDelaySeconds: 30
           periodSeconds: 10
           timeoutSeconds: 5
@@ -109,7 +109,7 @@ spec:
         livenessProbe:
           httpGet:
             path: /
-            port: 3000
+            port: 5173
           initialDelaySeconds: 60
           periodSeconds: 30
           timeoutSeconds: 10
