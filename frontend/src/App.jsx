@@ -856,8 +856,8 @@ function App() {
         setUploadStatus('❌ Upload cancelled');
         setUploadSteps(prev => prev.map(step => ({ ...step, status: "cancelled" })));
       } else {
-        console.error('Error uploading audio:', error);
-        setUploadStatus('❌ Upload failed. Please try again.');
+      console.error('Error uploading audio:', error);
+      setUploadStatus('❌ Upload failed. Please try again.');
         setUploadSteps(prev => prev.map(step => ({ ...step, status: "error" })));
       }
     } finally {
@@ -1096,9 +1096,9 @@ function App() {
               </select>
             </div>
             <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
-              <button type="submit" disabled={isUploadingAudio || !audioFile}>
-                {isUploadingAudio ? '⏳ Processing...' : '🚀 Upload & Transcribe'}
-              </button>
+            <button type="submit" disabled={isUploadingAudio || !audioFile}>
+              {isUploadingAudio ? '⏳ Processing...' : '🚀 Upload & Transcribe'}
+            </button>
               {isUploadingAudio && (
                 <button 
                   type="button" 
@@ -1179,9 +1179,25 @@ function App() {
                         <div style={{
                           fontWeight: 'bold',
                           marginBottom: '5px',
-                          color: '#212529'
+                          color: '#212529',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'space-between'
                         }}>
-                          Step {step.step}: {step.name}
+                          <span>Step {step.step}: {step.name}</span>
+                          {step.details && step.details.duration_ms && (
+                            <span style={{
+                              fontSize: '0.85em',
+                              fontWeight: 'bold',
+                              color: '#007bff',
+                              backgroundColor: '#e7f3ff',
+                              padding: '2px 8px',
+                              borderRadius: '4px',
+                              marginLeft: '10px'
+                            }}>
+                              ⏱️ {step.details.duration_ms}ms
+                            </span>
+                          )}
                         </div>
                         {step.details && (
                           <div style={{ fontSize: '0.9em', color: '#6c757d' }}>
@@ -1212,14 +1228,17 @@ function App() {
                             {step.details.inserted_id && (
                               <div>💾 Document ID: {step.details.inserted_id}</div>
                             )}
-                            {step.details.duration_ms && (
-                              <div style={{ 
-                                marginTop: '5px',
-                                fontWeight: 'bold',
-                                color: '#007bff'
-                              }}>
-                                ⏱️ Duration: {step.details.duration_ms}ms
-                              </div>
+                            {step.details.document && step.details.document.embedding_dimensions && (
+                              <div>📊 Embedding Size: {step.details.document.embedding_dimensions} dimensions (~{(step.details.document.embedding_dimensions * 4 / 1024).toFixed(2)} KB)</div>
+                            )}
+                            {step.details.document_size_bytes && (
+                              <div>📦 Total Document Size: {(step.details.document_size_bytes / 1024).toFixed(2)} KB</div>
+                            )}
+                            {step.details.embedding_size_bytes && (
+                              <div>🧠 Embedding Data Size: {(step.details.embedding_size_bytes / 1024).toFixed(2)} KB</div>
+                            )}
+                            {step.details.document && step.details.document.body_length && (
+                              <div>📝 Text Length: {step.details.document.body_length} characters</div>
                             )}
                           </div>
                         )}
@@ -1247,7 +1266,7 @@ function App() {
           
           {mongodbOps.uploadAudio && (
             <MongoDBQueryResult 
-              operation={mongodbOps.uploadAudio}
+              operation={mongodbOps.uploadAudio} 
               collapsible={true}
             />
           )}
@@ -1534,7 +1553,7 @@ function App() {
             🏗️ Architecture & System Health
           </h2>
           {expandedSections.health && (
-            <div className="collapsible-content">
+          <div className="collapsible-content">
               {/* Controls */}
               <div style={{ 
                 marginBottom: '20px', 
@@ -1595,7 +1614,7 @@ function App() {
                     Timestamp: {systemHealth.timestamp}
                   </span>
                 )}
-              </div>
+                  </div>
 
               {isLoadingHealth && !systemHealth && (
                 <div style={{ padding: '40px', textAlign: 'center' }}>
@@ -1671,7 +1690,7 @@ function App() {
                                                systemHealth.system_resources.cpu_percent > 60 ? '#ffc107' : '#28a745',
                                 transition: 'width 0.3s'
                               }}></div>
-                            </div>
+                      </div>
                             <span style={{ fontSize: '0.9em' }}>{systemHealth.system_resources.cpu_percent}%</span>
                           </div>
                         )}
@@ -1805,9 +1824,9 @@ function App() {
                                   ({systemHealth.mongodb.collections[db]} collections)
                                 </span>
                               )}
-                            </div>
-                          ))}
-                        </div>
+                              </div>
+                            ))}
+                          </div>
                       </details>
                     )}
                   </div>
@@ -1834,8 +1853,8 @@ function App() {
                       <div><strong>Embedding Model:</strong> {systemHealth.backend.embedding_model}</div>
                       {systemHealth.backend.memory_usage_mb && (
                         <div><strong>Memory Usage:</strong> {systemHealth.backend.memory_usage_mb.toFixed(2)} MB</div>
-                      )}
-                    </div>
+                        )}
+                      </div>
                   </div>
 
                   {/* Ollama Section */}
@@ -1882,13 +1901,13 @@ function App() {
                               marginRight: '10px'
                             }}>
                               {model}
-                            </div>
-                          ))}
+                    </div>
+                  ))}
                         </div>
                       </details>
-                    )}
-                  </div>
-
+              )}
+            </div>
+            
                   {/* Frontend Section */}
                   {systemHealth.frontend && (
                     <div style={{
@@ -1911,7 +1930,7 @@ function App() {
                         )}
                         <div><strong>Current API URL:</strong> {API_URL}</div>
                         <div><strong>Build Time (Local):</strong> {BUILD_TIME}</div>
-                      </div>
+          </div>
                     </div>
                   )}
 
@@ -2036,7 +2055,7 @@ function App() {
                   )}
                 </>
               )}
-            </div>
+          </div>
           )}
         </section>
 
@@ -2044,7 +2063,7 @@ function App() {
         <section className="results-section collapsible-section">
           <h2 className="collapsible-header" onClick={() => toggleSection('documents')}>
             <span className="expand-icon">{expandedSections.documents ? '▼' : '▶'}</span>
-            📚 {searchResults.length > 0 ? `Search Results (${searchResults.length})` : `All Documents (${documents.length})`}
+            📚 {searchResults.length > 0 ? `Search Results (${searchResults.length})` : `Last 10 Documents (${documents.length})`}
           </h2>
           {expandedSections.documents && (
           <div className="collapsible-content">
@@ -2069,7 +2088,7 @@ function App() {
             </div>
           ) : (
             <div>
-              <h3>All Documents {documents.length > 0 ? `(${documents.length})` : ''}</h3>
+              <h3>Last 10 Documents {documents.length > 0 ? `(${documents.length})` : ''}</h3>
               {documents.length === 0 ? (
                 <p style={{ padding: '20px', textAlign: 'center', color: '#666' }}>
                   No documents found. Add a document or upload an audio file to get started.
@@ -2092,7 +2111,7 @@ function App() {
           {mongodbOps.fetchDocuments && (
             <MongoDBOperationDetails 
               operation={mongodbOps.fetchDocuments} 
-              title="Fetch All Documents"
+              title="Fetch Last 10 Documents"
             />
           )}
           </div>

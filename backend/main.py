@@ -876,6 +876,10 @@ async def create_document_from_audio(
         })
         
         # Step 5: Create document and insert into MongoDB
+        # Note: This step may take longer because:
+        # - The document includes a 384-dimensional embedding vector (~1.5KB)
+        # - MongoDB needs to serialize and write the document
+        # - If indexes exist, MongoDB needs to update them
         step_start = time.time()
         doc_dict = {
             "title": title,
@@ -885,7 +889,7 @@ async def create_document_from_audio(
             "audio_filename": audio.filename,
             "detected_language": detected_language,
             "language": mongodb_language,
-            "embedding": embedding
+            "embedding": embedding  # 384-dimensional vector (~1.5KB)
         }
         
         insert_query = {
@@ -894,10 +898,11 @@ async def create_document_from_audio(
                     "title": doc_dict['title'],
                     "body": f"{doc_dict['body'][:100]}...",
                     "tags": doc_dict['tags'],
-                    "embedding": f"[{len(embedding)}-dimensional vector]",
+                    "embedding": f"[{len(embedding)}-dimensional vector, ~{len(embedding) * 4 / 1024:.2f} KB]",
                     "source": "audio",
                     "audio_filename": audio.filename,
-                    "detected_language": detected_language
+                    "detected_language": detected_language,
+                    "note": "Full document includes large embedding vector for semantic search"
                 }
             }
         }
@@ -908,6 +913,11 @@ async def create_document_from_audio(
         # Get the inserted document
         inserted_doc = documents.find_one({"_id": result.inserted_id})
         
+        # Calculate document size for performance analysis
+        import sys
+        doc_size_bytes = sys.getsizeof(str(doc_dict))
+        embedding_size_bytes = sys.getsizeof(embedding) if embedding else 0
+        
         workflow_steps.append({
             "step": 5,
             "name": "Insert into MongoDB",
@@ -916,10 +926,13 @@ async def create_document_from_audio(
                 "inserted_id": str(result.inserted_id),
                 "acknowledged": result.acknowledged,
                 "duration_ms": round(mongodb_execution_time, 2),
+                "document_size_bytes": doc_size_bytes,
+                "embedding_size_bytes": embedding_size_bytes,
                 "document": {
                     "_id": str(inserted_doc["_id"]),
                     "title": inserted_doc.get("title", ""),
                     "body_preview": inserted_doc.get("body", "")[:200] + ("..." if len(inserted_doc.get("body", "")) > 200 else ""),
+                    "body_length": len(inserted_doc.get("body", "")),
                     "tags": inserted_doc.get("tags", []),
                     "source": inserted_doc.get("source", ""),
                     "has_embedding": "embedding" in inserted_doc,
@@ -1181,14 +1194,25 @@ async def get_documents():
     import time
     start_time = time.time()
     
-    find_query = {"find": {}}
-    docs = list(documents.find())
+    # Get last 10 documents, ordered by insertion time (most recent first)
+    # MongoDB ObjectId contains timestamp, so sorting by _id descending gives most recent first
+    find_query = {
+        "find": {},
+        "sort": {"_id": -1},
+        "limit": 10,
+        "note": "Get last 10 documents, most recent first"
+    }
+    docs = list(documents.find().sort("_id", -1).limit(10))
     execution_time = (time.time() - start_time) * 1000
     
     mongodb_op = MongoDBOperation(
         operation="find",
         query=find_query,
-        result={"count": len(docs)},
+        result={
+            "count": len(docs),
+            "limit": 10,
+            "sorted_by": "_id (descending - most recent first)"
+        },
         execution_time_ms=round(execution_time, 2),
         documents_affected=len(docs)
     )
