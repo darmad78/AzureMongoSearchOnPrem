@@ -152,8 +152,8 @@ gcloud compute instances list
 gcloud compute ssh mongodb-demo-cheap
 
 # Clone and setup
-git clone https://github.com/darmad78/AzureMongoSearchOnPrem.git
-cd AzureMongoSearchOnPrem
+git clone https://github.com/darmad78/RAGOnPremMongoDB.git
+cd RAGOnPremMongoDB
 
 # Install prerequisites
 chmod +x setup-ubuntu-prerequisites.sh
@@ -168,7 +168,7 @@ exit
 ```bash
 # Log back in
 gcloud compute ssh mongodb-demo-cheap
-cd AzureMongoSearchOnPrem
+cd RAGOnPremMongoDB
 
 # Create optimized docker-compose override
 cat > docker-compose.override.yml << 'EOF'
@@ -455,14 +455,14 @@ gcloud compute instances create mongodb-demo \
 
 # 2. SSH and setup
 gcloud compute ssh mongodb-demo
-git clone https://github.com/darmad78/AzureMongoSearchOnPrem.git
-cd AzureMongoSearchOnPrem
+git clone https://github.com/darmad78/RAGOnPremMongoDB.git
+cd RAGOnPremMongoDB
 ./setup-ubuntu-prerequisites.sh
 exit
 
 # 3. Deploy (after logging back in)
 gcloud compute ssh mongodb-demo
-cd AzureMongoSearchOnPrem
+cd RAGOnPremMongoDB
 
 # Use phi instead of llama2 for faster performance
 export OLLAMA_MODEL=phi

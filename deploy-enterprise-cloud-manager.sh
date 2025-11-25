@@ -398,7 +398,7 @@ spec:
         args:
           - |
             apt-get update && apt-get install -y git ffmpeg
-            git clone https://github.com/darmad78/AzureMongoSearchOnPrem.git /app
+            git clone https://github.com/darmad78/RAGOnPremMongoDB.git /app
             cd /app/backend
             pip install --no-cache-dir -r requirements.txt
             uvicorn main:app --host 0.0.0.0 --port 8000
@@ -458,7 +458,7 @@ spec:
         args:
           - |
             apk add --no-cache git
-            git clone https://github.com/darmad78/AzureMongoSearchOnPrem.git /app
+            git clone https://github.com/darmad78/RAGOnPremMongoDB.git /app
             cd /app/frontend
             npm install
             npm run dev -- --host 0.0.0.0

@@ -387,8 +387,8 @@ OLLAMA_MODEL: phi  # Instead of llama2
 ssh -i your-key.pem ubuntu@ec2-instance-ip
 
 # Clone repository
-git clone https://github.com/darmad78/AzureMongoSearchOnPrem.git
-cd AzureMongoSearchOnPrem
+git clone https://github.com/darmad78/RAGOnPremMongoDB.git
+cd RAGOnPremMongoDB
 
 # Run setup
 ./setup-ubuntu-prerequisites.sh
@@ -525,7 +525,7 @@ You now have a fully functional MongoDB Enterprise Advanced deployment with:
 - ✅ Semantic search
 - ✅ Modern web UI
 
-**Repository:** https://github.com/darmad78/AzureMongoSearchOnPrem
+**Repository:** https://github.com/darmad78/RAGOnPremMongoDB
 
 **Enjoy your MongoDB Enterprise demo!** 🚀
 

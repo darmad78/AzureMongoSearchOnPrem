@@ -340,8 +340,8 @@ kubectl rollout undo statefulset/mdb-rs
 
 ### **Quick Start with Docker Compose**
 ```bash
-git clone https://github.com/darmad78/AzureMongoSearchOnPrem.git
-cd AzureMongoSearchOnPrem
+git clone https://github.com/darmad78/RAGOnPremMongoDB.git
+cd RAGOnPremMongoDB
 docker compose up -d
 # Visit http://localhost:5173
 ```

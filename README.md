@@ -23,8 +23,8 @@ This is the **recommended deployment** that gives you full MongoDB Enterprise Ve
 
 ```bash
 # Clone the repository
-git clone https://github.com/darmad78/AzureMongoSearchOnPrem.git
-cd AzureMongoSearchOnPrem
+git clone https://github.com/darmad78/RAGOnPremMongoDB.git
+cd RAGOnPremMongoDB
 
 # 1. Start Docker Compose stack (4 CPUs)
 docker-compose up -d
@@ -53,8 +53,8 @@ export SEARCH_SYNC_PASSWORD="your-secure-password"
 
 ```bash
 # Clone the repository
-git clone https://github.com/darmad78/AzureMongoSearchOnPrem.git
-cd AzureMongoSearchOnPrem
+git clone https://github.com/darmad78/RAGOnPremMongoDB.git
+cd RAGOnPremMongoDB
 
 # Check requirements
 ./check-requirements.sh kubernetes
@@ -282,8 +282,8 @@ Deploy to any cloud provider running Ubuntu 22.04:
 # After instance is running:
 
 ssh -i key.pem ubuntu@ec2-ip
-git clone https://github.com/darmad78/AzureMongoSearchOnPrem.git
-cd AzureMongoSearchOnPrem
+git clone https://github.com/darmad78/RAGOnPremMongoDB.git
+cd RAGOnPremMongoDB
 ./setup-ubuntu-prerequisites.sh
 
 # Log out and back in, then:
@@ -304,8 +304,8 @@ gcloud compute instances create mongodb-demo \
 gcloud compute ssh mongodb-demo
 
 # Setup and deploy
-git clone https://github.com/darmad78/AzureMongoSearchOnPrem.git
-cd AzureMongoSearchOnPrem
+git clone https://github.com/darmad78/RAGOnPremMongoDB.git
+cd RAGOnPremMongoDB
 ./setup-ubuntu-prerequisites.sh
 
 # Log out and back in, then:
@@ -328,8 +328,8 @@ az vm create \
 ssh azureuser@<vm-public-ip>
 
 # Setup and deploy
-git clone https://github.com/darmad78/AzureMongoSearchOnPrem.git
-cd AzureMongoSearchOnPrem
+git clone https://github.com/darmad78/RAGOnPremMongoDB.git
+cd RAGOnPremMongoDB
 ./setup-ubuntu-prerequisites.sh
 
 # Log out and back in, then:
@@ -399,8 +399,8 @@ This project is licensed under the Apache 2.0 License - see the [LICENSE](LICENS
 
 ## 📞 Support
 
-- **Issues**: [GitHub Issues](https://github.com/darmad78/AzureMongoSearchOnPrem/issues)
-- **Discussions**: [GitHub Discussions](https://github.com/darmad78/AzureMongoSearchOnPrem/discussions)
+- **Issues**: [GitHub Issues](https://github.com/darmad78/RAGOnPremMongoDB/issues)
+- **Discussions**: [GitHub Discussions](https://github.com/darmad78/RAGOnPremMongoDB/discussions)
 - **Documentation**: [MongoDB Docs](https://www.mongodb.com/docs/)
 - **Ubuntu Guide**: [UBUNTU_QUICKSTART.md](UBUNTU_QUICKSTART.md)
 - **System Requirements**: [SYSTEM_REQUIREMENTS.md](SYSTEM_REQUIREMENTS.md)

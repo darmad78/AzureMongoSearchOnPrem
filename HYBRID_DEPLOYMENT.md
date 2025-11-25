@@ -67,7 +67,7 @@ This approach enables native MongoDB Vector Search on modest hardware!
 Start the main application stack:
 
 ```bash
-cd ~/AzureMongoSearchOnPrem
+cd ~/RAGOnPremMongoDB
 
 # Start all services
 docker compose up -d

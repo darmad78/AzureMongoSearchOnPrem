@@ -41,8 +41,8 @@ Thank you for your interest in contributing to this project! This document provi
 
 ```bash
 # Clone your fork
-git clone https://github.com/yourusername/AzureMongoSearchOnPrem.git
-cd AzureMongoSearchOnPrem
+git clone https://github.com/yourusername/RAGOnPremMongoDB.git
+cd RAGOnPremMongoDB
 
 # Set up development environment
 cp deploy.conf.example deploy.conf

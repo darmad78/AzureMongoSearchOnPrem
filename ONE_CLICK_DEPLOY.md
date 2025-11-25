@@ -48,7 +48,7 @@ sudo usermod -aG docker $USER
 
 ### 1. Clone & Navigate
 ```bash
-cd /path/to/AzureMongoSearchOnPrem
+cd /path/to/RAGOnPremMongoDB
 ```
 
 ### 2. Deploy Everything

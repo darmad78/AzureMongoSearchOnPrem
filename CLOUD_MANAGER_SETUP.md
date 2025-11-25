@@ -69,7 +69,7 @@ Private API Key:  12345678-1234-1234-1234-123456789abc
 On your VM:
 
 ```bash
-cd ~/AzureMongoSearchOnPrem
+cd ~/RAGOnPremMongoDB
 git pull origin main
 
 # Option 1: Set environment variables

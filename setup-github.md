@@ -37,10 +37,10 @@ git commit -m "Initial commit: MongoDB Enterprise Advanced Document Search App
 gh auth login
 
 # Create repository
-gh repo create AzureMongoSearchOnPrem --public --description "MongoDB Enterprise Advanced Document Search App with Search & Vector Search capabilities, deployed on Kubernetes with Python FastAPI backend and React frontend"
+gh repo create RAGOnPremMongoDB --public --description "MongoDB Enterprise Advanced Document Search App with Search & Vector Search capabilities, deployed on Kubernetes with Python FastAPI backend and React frontend"
 
 # Push to GitHub
-git remote add origin https://github.com/yourusername/AzureMongoSearchOnPrem.git
+git remote add origin https://github.com/yourusername/RAGOnPremMongoDB.git
 git branch -M main
 git push -u origin main
 ```
@@ -51,7 +51,7 @@ git push -u origin main
 2. Click the "+" icon in the top right corner
 3. Select "New repository"
 4. Fill in the repository details:
-   - **Repository name**: `AzureMongoSearchOnPrem`
+   - **Repository name**: `RAGOnPremMongoDB`
    - **Description**: `MongoDB Enterprise Advanced Document Search App with Search & Vector Search capabilities, deployed on Kubernetes with Python FastAPI backend and React frontend`
    - **Visibility**: Public
    - **Initialize with**: Don't initialize (we already have files)
@@ -61,7 +61,7 @@ git push -u origin main
 
 ```bash
 # Add remote origin (replace 'yourusername' with your GitHub username)
-git remote add origin https://github.com/yourusername/AzureMongoSearchOnPrem.git
+git remote add origin https://github.com/yourusername/RAGOnPremMongoDB.git
 
 # Set main branch
 git branch -M main
@@ -115,7 +115,7 @@ Your repository now includes:
 
 ### 📁 Project Structure
 ```
-AzureMongoSearchOnPrem/
+RAGOnPremMongoDB/
 ├── .github/                 # GitHub workflows and templates
 ├── backend/                 # Python FastAPI backend
 ├── frontend/                # React frontend
@@ -150,18 +150,18 @@ AzureMongoSearchOnPrem/
 
 ### Repository URL
 ```
-https://github.com/yourusername/AzureMongoSearchOnPrem
+https://github.com/yourusername/RAGOnPremMongoDB
 ```
 
 ### Clone Command
 ```bash
-git clone https://github.com/yourusername/AzureMongoSearchOnPrem.git
+git clone https://github.com/yourusername/RAGOnPremMongoDB.git
 ```
 
 ### Quick Start Command
 ```bash
-git clone https://github.com/yourusername/AzureMongoSearchOnPrem.git
-cd AzureMongoSearchOnPrem
+git clone https://github.com/yourusername/RAGOnPremMongoDB.git
+cd RAGOnPremMongoDB
 chmod +x deploy.sh
 ./deploy.sh
 ```
@@ -185,11 +185,11 @@ After pushing, your repository will show:
 
 ## 🔗 Useful GitHub URLs
 
-- **Repository**: `https://github.com/yourusername/AzureMongoSearchOnPrem`
-- **Issues**: `https://github.com/yourusername/AzureMongoSearchOnPrem/issues`
-- **Discussions**: `https://github.com/yourusername/AzureMongoSearchOnPrem/discussions`
-- **Actions**: `https://github.com/yourusername/AzureMongoSearchOnPrem/actions`
-- **Releases**: `https://github.com/yourusername/AzureMongoSearchOnPrem/releases`
+- **Repository**: `https://github.com/yourusername/RAGOnPremMongoDB`
+- **Issues**: `https://github.com/yourusername/RAGOnPremMongoDB/issues`
+- **Discussions**: `https://github.com/yourusername/RAGOnPremMongoDB/discussions`
+- **Actions**: `https://github.com/yourusername/RAGOnPremMongoDB/actions`
+- **Releases**: `https://github.com/yourusername/RAGOnPremMongoDB/releases`
 
 Your MongoDB Enterprise Advanced Document Search App is now ready to share with the world! 🌟
 
