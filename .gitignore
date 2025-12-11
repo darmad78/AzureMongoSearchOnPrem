@@ -120,6 +120,9 @@ mms-data/
 # Deployment-specific overrides
 docker-compose.override.yml
 
+# Alternative deployment methods (not part of standard phase-based deployment)
+other_deployments/
+
 # Allow MongoDB binaries in opsmanagerfiles directory
 !backend/opsmanagerfiles/*.tgz
 

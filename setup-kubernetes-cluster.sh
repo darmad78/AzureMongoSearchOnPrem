@@ -120,7 +120,7 @@ if [ -f .env ]; then
     sed -i "s/K8S_CTX=.*/K8S_CTX=\"$CLUSTER_CONTEXT\"/" .env
     echo "✅ Updated .env file with cluster context: $CLUSTER_CONTEXT"
 else
-    echo "⚠️ No .env file found. Please create one from env.ubuntu.example"
+    echo "⚠️ No .env file found. Note: .env file is only needed for Docker Compose deployments (see other_deployments/option2-docker-compose/)"
 fi
 
 echo ""
