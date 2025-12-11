@@ -89,8 +89,6 @@ This application solves these challenges by combining **MongoDB Enterprise Vecto
 
 **Operating System:**
 - **Linux**: Ubuntu 22.04 LTS (recommended) or RHEL 8+
-- **macOS**: For local development (deployment targets Linux)
-- **Windows**: WSL2 for local development
 
 **MongoDB Enterprise Binary:**
 - Place MongoDB Enterprise binary in `backend/opsmanagerfiles/`
