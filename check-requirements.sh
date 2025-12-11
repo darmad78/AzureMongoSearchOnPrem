@@ -361,7 +361,11 @@ show_summary() {
         if [ "$DEPLOYMENT_MODE" = "docker" ]; then
             echo "  docker-compose up -d"
         else
-            echo "  ./deploy.sh"
+            echo "  ./deploy-phase1-ops-manager.sh"
+            echo "  ./deploy-phase2-mongodb-enterprise.sh"
+            echo "  ./deploy-phase3-mongodb-search.sh"
+            echo "  ./deploy-phase4-ai-models.sh"
+            echo "  ./deploy-phase5-backend-frontend.sh"
             echo "  ./verify-and-setup.sh"
         fi
         return 0

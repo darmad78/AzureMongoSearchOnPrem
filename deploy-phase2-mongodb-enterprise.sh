@@ -537,25 +537,33 @@ else
 fi
 
 # Step 5.5: Automatically create deployment in Ops Manager via API
+# This step attempts to automatically register the MongoDB deployment with Ops Manager
+# using the Ops Manager Automation API. If this fails, the user must create the
+# deployment manually in the Ops Manager web UI.
 log_step "Step 5.5: Creating deployment in Ops Manager"
 log_info "Automatically registering MongoDB deployment with Ops Manager..."
 
-# Get credentials from secret
+# Retrieve API credentials from Kubernetes secret
+# These were created in Step 4 from user-provided credentials
 PUBLIC_API_KEY=$(kubectl get secret om-credentials -n ${NAMESPACE} -o jsonpath='{.data.publicApiKey}' | base64 -d)
 PRIVATE_API_KEY=$(kubectl get secret om-credentials -n ${NAMESPACE} -o jsonpath='{.data.privateApiKey}' | base64 -d)
 
 if [ -z "${PUBLIC_API_KEY}" ] || [ -z "${PRIVATE_API_KEY}" ]; then
-  log_warning "API keys not found. Deployment must be created manually in Ops Manager UI."
+  log_warning "API keys not found in secret. Deployment must be created manually in Ops Manager UI."
   log_warning "Go to ${OPS_MANAGER_URL} and create a Replica Set deployment named '${MDB_RESOURCE_NAME}' with 3 members."
 else
-  # Create authentication header (Digest authentication)
+  # Ops Manager uses Digest authentication for API requests
+  # The credentials are used with curl's --digest flag
   AUTH_HEADER=$(printf "%s:%s" "${PUBLIC_API_KEY}" "${PRIVATE_API_KEY}" | base64)
   
-  # Attempt to automatically create deployment in Ops Manager via API
-  log_info "Attempting to automatically create deployment in Ops Manager..."
+  # Attempt to automatically create deployment in Ops Manager via Automation API
+  # This uses the Ops Manager Automation Configuration API endpoint
+  log_info "Attempting to automatically create deployment in Ops Manager via API..."
   
-  # Get current automation config using the agent endpoint (more direct)
-  # Note: Using PROJECT_ID (not ORG_ID) as automation config is project-scoped
+  # Fetch current automation configuration from Ops Manager
+  # The automation config contains all deployment definitions for the project
+  # Note: Using PROJECT_ID (not ORG_ID) because automation config is project-scoped
+  # The endpoint returns JSON with current processes, replica sets, and auth config
   CURRENT_CONFIG=$(curl -s --digest \
     -u "${PUBLIC_API_KEY}:${PRIVATE_API_KEY}" \
     "${OPS_MANAGER_URL}/agents/api/automation/conf/v1/${PROJECT_ID}" \
@@ -583,37 +591,52 @@ else
         echo "${CURRENT_CONFIG}" > "${TEMP_CONFIG_FILE}"
         
         # Read the config in Python and construct the update
+        # This Python script modifies the Ops Manager automation configuration to add
+        # the MongoDB replica set deployment. It:
+        # 1. Reads the current automation config from temp file
+        # 2. Creates process definitions for 3 MongoDB replica set members
+        # 3. Configures authentication (SCRAM-SHA-256)
+        # 4. Creates replica set definition with 3 members
+        # 5. Outputs the updated JSON configuration
         UPDATED_CONFIG=$(python3 <<EOF
 import json
 import sys
 
-# Read current config from file
+# Read current automation config from temporary file
+# The config contains Ops Manager's current automation settings
 config_file = "${TEMP_CONFIG_FILE}"
 with open(config_file, "r") as f:
     current = json.load(f)
 
-# Create process definitions for each member (using correct structure)
+# Create process definitions for each replica set member
+# Each process represents one MongoDB node in the 3-member replica set
+# Process names follow pattern: <resource-name>-0, <resource-name>-1, <resource-name>-2
 processes = []
 for i in range(3):
+    # Construct Kubernetes service DNS name for each member
+    # Format: <pod-name>.<service-name>.<namespace>.svc.cluster.local
     hostname = "${MDB_RESOURCE_NAME}-${i}.${MDB_RESOURCE_NAME}-svc.${NAMESPACE}.svc.cluster.local"
+    
+    # Define MongoDB process configuration
+    # This matches the structure expected by Ops Manager automation
     process = {
-        "name": "${MDB_RESOURCE_NAME}-${i}",
-        "processType": "mongod",
-        "version": "${MDB_VERSION}",
-        "featureCompatibilityVersion": "8.0",
-        "hostname": hostname,
-        "args2_6": {
+        "name": "${MDB_RESOURCE_NAME}-${i}",  # Process identifier (used in replica set)
+        "processType": "mongod",                # MongoDB daemon process
+        "version": "${MDB_VERSION}",            # MongoDB version (e.g., 8.2.1-ent)
+        "featureCompatibilityVersion": "8.0",   # FCV for compatibility
+        "hostname": hostname,                   # Full DNS name for Kubernetes
+        "args2_6": {                            # MongoDB configuration arguments
             "net": {
-                "port": 27017,
+                "port": 27017,                 # Standard MongoDB port
                 "tls": {
-                    "mode": "disabled"
+                    "mode": "disabled"          # TLS disabled for internal cluster
                 }
             },
             "replication": {
-                "replSetName": "${MDB_RESOURCE_NAME}"
+                "replSetName": "${MDB_RESOURCE_NAME}"  # Replica set name
             },
             "storage": {
-                "dbPath": "/data"
+                "dbPath": "/data"               # Data directory path
             },
             "systemLog": {
                 "destination": "file",
@@ -623,10 +646,12 @@ for i in range(3):
     }
     processes.append(process)
 
-# Replace processes array (don't extend - replace empty array)
+# Replace the entire processes array in the automation config
+# This ensures we have exactly 3 members, no duplicates
 current["cluster"]["processes"] = processes
 
-# Update auth section if needed (ensure auth is not disabled)
+# Update authentication configuration
+# Ensure SCRAM-SHA-256 authentication is enabled for security
 if "auth" in current["cluster"]:
     current["cluster"]["auth"]["disabled"] = False
     if "deploymentAuthMechanisms" not in current["cluster"]["auth"]:
@@ -634,19 +659,27 @@ if "auth" in current["cluster"]:
     if "autoAuthMechanisms" not in current["cluster"]["auth"]:
         current["cluster"]["auth"]["autoAuthMechanisms"] = ["SCRAM-SHA-256"]
 
-# Create replica set definition (members use process name, not full hostname)
+# Create replica set definition
+# Members reference process names (not full hostnames) for Ops Manager automation
+# Each member has equal priority and voting rights
 replica_set = {
-    "_id": "${MDB_RESOURCE_NAME}",
+    "_id": "${MDB_RESOURCE_NAME}",  # Replica set identifier
     "members": [
-        {"_id": i, "host": "${MDB_RESOURCE_NAME}-${i}", "priority": 1, "votes": 1}
+        {
+            "_id": i,                                    # Member ID (0, 1, 2)
+            "host": "${MDB_RESOURCE_NAME}-${i}",        # Process name (not full hostname)
+            "priority": 1,                               # Equal priority for all members
+            "votes": 1                                   # Each member has 1 vote
+        }
         for i in range(3)
     ]
 }
 
-# Replace replicaSets array
+# Replace the replicaSets array with our new definition
 current["cluster"]["replicaSets"] = [replica_set]
 
-# Output updated config
+# Output the updated configuration as JSON
+# This will be sent back to Ops Manager via API
 print(json.dumps(current))
 EOF
 )

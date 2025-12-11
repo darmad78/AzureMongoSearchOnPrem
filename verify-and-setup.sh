@@ -41,7 +41,7 @@ CONFIG_FILE="deploy.conf"
 load_config() {
     if [ ! -f "$CONFIG_FILE" ]; then
         log_error "Configuration file $CONFIG_FILE not found"
-        log_info "Please run ./deploy.sh first"
+        log_info "Please run the phase deployment scripts first (deploy-phase1-ops-manager.sh, etc.)"
         exit 1
     fi
     

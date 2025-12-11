@@ -395,7 +395,12 @@ docker stack deploy -c docker-compose.yml search-app
 ```
 
 ### Using Kubernetes
-See `deploy.sh` for Kubernetes deployment with MongoDB Enterprise.
+See the phase deployment scripts for Kubernetes deployment with MongoDB Enterprise:
+- `deploy-phase1-ops-manager.sh`
+- `deploy-phase2-mongodb-enterprise.sh`
+- `deploy-phase3-mongodb-search.sh`
+- `deploy-phase4-ai-models.sh`
+- `deploy-phase5-backend-frontend.sh`
 
 ### Cloud Deployment
 

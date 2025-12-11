@@ -164,7 +164,7 @@ docker compose up -d
 
 # 2. Deploy search to Kubernetes
 export SEARCH_SYNC_PASSWORD="password123"
-./deploy-search-only.sh
+./archive/scripts/deploy-search-only.sh  # Note: This script is archived but available for hybrid deployments
 
 # 3. Connect them
 cat > docker-compose.override.yml << EOF

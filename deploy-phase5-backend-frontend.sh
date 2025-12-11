@@ -1,8 +1,73 @@
 #!/bin/bash
 set -e
 
+# ============================================================================
 # Phase 5: Deploy Backend & Frontend
-# Deploys the Python FastAPI backend and React frontend to Kubernetes
+# ============================================================================
+# This script deploys the Python FastAPI backend and React frontend to
+# Kubernetes, completing the full-stack RAG application deployment.
+#
+# Prerequisites:
+#   - Phase 1 completed (Ops Manager)
+#   - Phase 2 completed (MongoDB Enterprise with users)
+#   - Phase 3 completed (MongoDB Search)
+#   - Phase 4 completed (AI Models - Ollama)
+#   - Docker installed and running
+#   - kubectl configured and connected to cluster
+#   - Backend and frontend source code in ./backend and ./frontend
+#
+# What this script does:
+#   1. Verifies all prerequisites are met
+#   2. Builds backend Docker image
+#   3. Builds frontend Docker image
+#   4. Loads images to Kubernetes (minikube)
+#   5. Retrieves MongoDB and Ollama connection details
+#   6. Creates MongoDB text indexes (via temporary pod)
+#   7. Deploys backend application to Kubernetes
+#   8. Deploys frontend application to Kubernetes
+#   9. Sets up persistent port forwarding (systemd service)
+#   10. Verifies deployment and provides access information
+#
+# Configuration:
+#   - BACKEND_IMAGE: Backend Docker image name (default: azuremongosearch-backend:latest)
+#   - FRONTEND_IMAGE: Frontend Docker image name (default: document-search-frontend:fixed-v2)
+#   - NAMESPACE: Kubernetes namespace (default: mongodb)
+#
+# Output:
+#   - Backend service accessible at NodePort 30888
+#   - Frontend service accessible at NodePort 30173
+#   - Systemd service for automatic port forwarding
+#   - Complete RAG application ready to use
+#
+# Access URLs:
+#   - Frontend: http://<VM_IP>:30173
+#   - Backend API: http://<VM_IP>:30888
+# ============================================================================
+
+# Initialize cleanup tracking
+TEMP_POD_NAME="mongo-index-temp"
+
+# Cleanup function for error handling and resource cleanup
+cleanup() {
+    local exit_code=$?
+    
+    # Cleanup temporary pod if it exists
+    if [ -n "${TEMP_POD_NAME}" ]; then
+        log_info "Cleaning up temporary pod: ${TEMP_POD_NAME}"
+        kubectl delete pod ${TEMP_POD_NAME} -n ${NAMESPACE} --ignore-not-found=true 2>/dev/null || true
+    fi
+    
+    if [ $exit_code -ne 0 ]; then
+        log_error "Script failed at line $LINENO with exit code $exit_code"
+        log_info "Check logs above for details"
+        log_info "Backend/Frontend deployment may be in partial state"
+        log_info "You may need to manually clean up resources:"
+        log_info "  kubectl delete deployment search-backend search-frontend -n ${NAMESPACE}"
+    fi
+    
+    exit $exit_code
+}
+trap cleanup EXIT INT TERM
 
 # Colors for output
 RED='\033[0;31m'
@@ -205,11 +270,22 @@ fi
 
 # Create text index for search functionality
 log_info "Creating text index on documents collection for search..."
-kubectl run mongo-index-temp --image=mongodb/mongodb-enterprise-server:latest --restart=Never -n ${NAMESPACE} \
+# Note: Temporary pod is tracked for cleanup via trap handler
+if kubectl run ${TEMP_POD_NAME} --image=mongodb/mongodb-enterprise-server:latest --restart=Never -n ${NAMESPACE} \
     --command -- mongosh "${MONGODB_URL}" --eval 'db.documents.createIndex({ title: "text", body: "text", tags: "text" })' \
-    > /dev/null 2>&1 || log_warning "Could not create text index, it may already exist"
-sleep 5
-kubectl delete pod mongo-index-temp -n ${NAMESPACE} > /dev/null 2>&1 || true
+    > /dev/null 2>&1; then
+    log_info "Waiting for index creation to complete..."
+    sleep 5
+    # Pod will be cleaned up by trap handler, but delete it here if successful
+    kubectl delete pod ${TEMP_POD_NAME} -n ${NAMESPACE} --ignore-not-found=true 2>/dev/null || true
+    TEMP_POD_NAME=""  # Clear to prevent double cleanup
+    log_success "Text index created successfully"
+else
+    log_warning "Could not create text index, it may already exist"
+    # Ensure pod is cleaned up even on failure
+    kubectl delete pod ${TEMP_POD_NAME} -n ${NAMESPACE} --ignore-not-found=true 2>/dev/null || true
+    TEMP_POD_NAME=""  # Clear to prevent double cleanup
+fi
 log_success "MongoDB database configuration complete"
 
 # Step 6: Get Ollama Connection Details
@@ -631,7 +707,10 @@ log_step "Step 13: Setting up Persistent Port Forwarding"
 
 log_info "Creating systemd service for automatic port forwarding..."
 CURRENT_USER=$(whoami)
+# Use $HOME instead of hardcoded /home path for better portability
+USER_HOME=$(eval echo ~${CURRENT_USER})
 
+# Use NAMESPACE variable instead of hardcoded "mongodb"
 sudo tee /etc/systemd/system/k8s-port-forward.service > /dev/null <<EOF
 [Unit]
 Description=Kubernetes Port Forward for Search Frontend and Backend
@@ -641,10 +720,10 @@ Requires=docker.service
 [Service]
 Type=simple
 User=${CURRENT_USER}
-WorkingDirectory=/home/${CURRENT_USER}
-Environment="KUBECONFIG=/home/${CURRENT_USER}/.kube/config"
+WorkingDirectory=${USER_HOME}
+Environment="KUBECONFIG=${USER_HOME}/.kube/config"
 ExecStartPre=/bin/sleep 30
-ExecStart=/bin/bash -c 'kubectl port-forward -n mongodb svc/search-frontend-svc 30173:5173 --address 0.0.0.0 & kubectl port-forward -n mongodb svc/search-backend-svc 30888:8888 --address 0.0.0.0 & wait'
+ExecStart=/bin/bash -c 'kubectl port-forward -n ${NAMESPACE} svc/search-frontend-svc 30173:5173 --address 0.0.0.0 & kubectl port-forward -n ${NAMESPACE} svc/search-backend-svc 30888:8888 --address 0.0.0.0 & wait'
 Restart=always
 RestartSec=10
 
